@@ -135,6 +135,23 @@ input[type=range]{flex:1;accent-color:var(--signal);height:18px}
 footer{max-width:1280px;margin:0 auto;padding:6px 20px 28px;font-size:12px;color:var(--ink-dim);line-height:1.6}
 footer a{color:var(--ink-mid)}
 
+/* alert tones */
+.tone-row{display:flex;align-items:center;gap:9px;padding:7px 14px;border-bottom:1px solid var(--line-soft)}
+.tone-row:last-child{border-bottom:none}
+.tone-row .swatch{width:3px;height:14px;border-radius:1px;flex:none}
+.tone-nm{flex:1;min-width:0;font-size:13.5px;color:var(--ink-mid);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tone-sel{background:var(--panel-2);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius);
+  font-family:inherit;font-size:12.5px;padding:3px 4px;max-width:106px}
+.tone-play{width:26px;height:24px;flex:none;border:1px solid var(--line);border-radius:var(--radius);
+  background:var(--panel-2);color:var(--ink-dim);font-size:10px;display:grid;place-items:center}
+.tone-play:hover{color:var(--signal);border-color:var(--signal-dim)}
+@media (max-width:560px){
+  .tone-row{padding:9px 12px;gap:10px}
+  .tone-nm{font-size:14px}
+  .tone-sel{font-size:13px;padding:6px 4px;max-width:118px}
+  .tone-play{width:34px;height:30px;font-size:12px}
+}
+
 /* ---------- responsive: single column ----------
    Re-stated after the base .console rule above, which otherwise wins on
    source order and leaves the console stuck over the call log on phones. */
@@ -243,6 +260,11 @@ footer a{color:var(--ink-mid)}
       <div class="spark-ax"><span>30 min ago</span><span>now</span></div>
     </div>
 
+    <div class="card" id="toneCard" hidden>
+      <div class="card-hd"><span class="label">Alert tones</span><span class="label" id="toneCount"></span></div>
+      <div id="toneBody"></div>
+    </div>
+
     <div class="card">
       <div class="card-hd">
         <span class="label">Talkgroups</span>
@@ -330,11 +352,12 @@ let firstLoad = true;
 const saved = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; } })();
 const enabled = new Set(saved.enabled || Object.keys(TG).map(Number));
 const alerts  = new Set(saved.alerts  || []);
+const tones   = saved.tones || {};   // talkgroup number -> tone id
 let volume = typeof saved.volume === "number" ? saved.volume : 80;
 
 function persist(){
   try { localStorage.setItem(LS, JSON.stringify({
-    enabled:[...enabled], alerts:[...alerts], volume
+    enabled:[...enabled], alerts:[...alerts], tones, volume
   })); } catch {}
 }
 
@@ -356,26 +379,52 @@ function ago(d){
 }
 const units = c => [...new Set((c.srcList||[]).map(s => s.src).filter(Boolean))];
 
-/* ---------- alert tone ---------- */
+/* ---------- alert tones ----------
+   Each tone is a short sequence of steps: f = frequency, d = duration,
+   at = offset from the start of the sequence, to = ramp to this frequency.
+   "Quick Call" is a nod to the Motorola Quick Call II two-tone paging that
+   actually pages out fire departments, which is why fire defaults to it. */
+const TONES = {
+  chirp:     {name:"Chirp",      steps:[{f:880,d:.12},{f:1320,d:.12,at:.13}]},
+  quickcall: {name:"Quick Call", steps:[{f:947,d:.5},{f:1153,d:.85,at:.55}]},
+  hilo:      {name:"Hi-Lo",      steps:[{f:1400,d:.16},{f:900,d:.2,at:.17}]},
+  triple:    {name:"Triple",     steps:[{f:1250,d:.06},{f:1250,d:.06,at:.1},{f:1250,d:.06,at:.2}]},
+  warble:    {name:"Warble",     steps:[{f:800,d:.08},{f:1150,d:.08,at:.08},{f:800,d:.08,at:.16},{f:1150,d:.08,at:.24}]},
+  pulse:     {name:"Low Pulse",  steps:[{f:300,d:.15,type:"triangle"},{f:300,d:.15,at:.22,type:"triangle"}]},
+  rise:      {name:"Ascending",  steps:[{f:600,to:1600,d:.3}]},
+  tick:      {name:"Tick",       steps:[{f:1900,d:.03,gain:.1}]}
+};
+// What each kind of agency sounds like until you override it per talkgroup.
+const KIND_TONE = {law:"chirp", fire:"quickcall", ems:"triple", campus:"hilo", ema:"warble", other:"tick"};
+const toneFor = n => (tones[n] && TONES[tones[n]]) ? tones[n] : (KIND_TONE[groupOf(n).kind] || "chirp");
+
 let actx = null;
-function tone(){
+function ensureCtx(){
+  actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+  if (actx.state === "suspended") actx.resume();
+  return actx;
+}
+function playTone(id){
   try {
-    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-    if (actx.state === "suspended") actx.resume();
-    [880, 1320].forEach((f, i) => {
-      const o = actx.createOscillator(), g = actx.createGain();
-      o.type = "sine"; o.frequency.value = f;
-      const t0 = actx.currentTime + i * 0.13;
+    const t = TONES[id] || TONES.chirp;
+    const ctx = ensureCtx(), now = ctx.currentTime, lvl = Math.max(0.04, volume / 100);
+    for (const s of t.steps) {
+      const o = ctx.createOscillator(), g = ctx.createGain(), t0 = now + (s.at || 0);
+      o.type = s.type || "sine";
+      o.frequency.setValueAtTime(s.f, t0);
+      if (s.to) o.frequency.linearRampToValueAtTime(s.to, t0 + s.d);
+      const peak = (s.gain || 0.14) * lvl;
       g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(0.14, t0 + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.12);
-      o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + 0.14);
-    });
+      g.gain.exponentialRampToValueAtTime(peak, t0 + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + s.d);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t0); o.stop(t0 + s.d + 0.03);
+    }
   } catch {}
 }
 function notify(c){
   const [alpha, desc] = TG[c.talkgroupNum] || ["Talkgroup " + c.talkgroupNum, ""];
-  tone();
+  playTone(toneFor(c.talkgroupNum));
   if (typeof Notification !== "undefined" && Notification.permission === "granted") {
     try { new Notification(alpha.toUpperCase(), { body: desc, tag: c._id }); } catch {}
   }
@@ -538,6 +587,24 @@ function render(){
   $("filterNote").textContent = n === total ? "All talkgroups" : n + " of " + total + " talkgroups";
 }
 
+function renderTones(){
+  const armed = [...alerts].sort((a, b) => a - b);
+  $("toneCard").hidden = armed.length === 0;
+  if (!armed.length) { $("toneBody").innerHTML = ""; return; }
+  $("toneCount").textContent = armed.length + " armed";
+  $("toneBody").innerHTML = armed.map(n => {
+    const g = groupOf(n), [alpha] = TG[n] || ["Talkgroup " + n, ""], sel = toneFor(n);
+    const opts = Object.keys(TONES).map(k =>
+      '<option value="' + k + '"' + (k === sel ? " selected" : "") + ">" + TONES[k].name + "</option>").join("");
+    return '<div class="tone-row">' +
+      '<span class="swatch" style="background:' + KIND_COLOR[g.kind] + '"></span>' +
+      '<span class="tone-nm">' + alpha + "</span>" +
+      '<select class="tone-sel" id="tone-' + n + '" data-tone="' + n + '" aria-label="Alert tone for ' + alpha + '">' + opts + "</select>" +
+      '<button class="tone-play" data-play="' + n + '" aria-label="Preview the ' + alpha + ' tone" title="Preview">\u25b6</button>' +
+    "</div>";
+  }).join("");
+}
+
 function renderFilter(){
   $("tgBody").innerHTML = GROUPS.map(g =>
     '<div class="grp"><div class="grp-hd"><span class="swatch" style="background:' + KIND_COLOR[g.kind] + '"></span>' +
@@ -579,11 +646,21 @@ $("tgBody").addEventListener("click", e => {
   else {
     alerts.add(n);
     if (typeof Notification !== "undefined" && Notification.permission === "default") Notification.requestPermission();
-    tone();
+    playTone(toneFor(n));
   }
   b.setAttribute("aria-pressed", alerts.has(n));
-  persist();
+  persist(); renderTones();
 });
+$("toneBody").addEventListener("change", e => {
+  const n = Number(e.target.dataset.tone); if (!n) return;
+  tones[n] = e.target.value;
+  persist(); playTone(tones[n]);
+});
+$("toneBody").addEventListener("click", e => {
+  const b = e.target.closest(".tone-play"); if (!b) return;
+  playTone(toneFor(Number(b.dataset.play)));
+});
+
 $("selAll").addEventListener("click", () => {
   Object.keys(TG).forEach(n => enabled.add(Number(n)));
   renderFilter(); persist(); render();
@@ -639,8 +716,7 @@ function initSession(){
 function keepAlive(on){
   try {
     if (on) {
-      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-      if (actx.state === "suspended") actx.resume();
+      ensureCtx();
       if (keepalive) return;
       const o = actx.createOscillator(), g = actx.createGain();
       g.gain.value = 0.0001;
@@ -658,6 +734,7 @@ function keepAlive(on){
 $("vol").value = volume;
 $("volNum").textContent = volume;
 renderFilter();
+renderTones();
 renderNowPlaying();
 initSession();
 poll();
