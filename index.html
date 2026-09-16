@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oxford MSWIN Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#0f1317; --panel:#161b21; --panel-2:#1b222a; --line:#252e38; --line-soft:#1f272f;
+  --ink:#e2e8ef; --ink-mid:#9aa8b6; --ink-dim:#6b7887;
+  --signal:#f0a848; --signal-dim:#8a6428;
+  --law:#6aa9e0; --fire:#e8724f; --ems:#57c39a; --campus:#cfa94d; --ema:#9b8cd6; --other:#8a97a6;
+  --alert:#e2564a;
+  --radius:3px;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--ground); color:var(--ink);
+  font-family:"Barlow Semi Condensed",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:15px; line-height:1.45; -webkit-font-smoothing:antialiased;
+  min-height:100vh;
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer}
+:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+.label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);font-weight:600}
+
+/* ---------- header ---------- */
+header{
+  border-bottom:1px solid var(--line); background:var(--panel);
+  position:sticky; top:0; z-index:20;
+}
+.hdr-in{
+  max-width:1280px;margin:0 auto;padding-block:12px;padding-left:20px;padding-right:20px;
+  display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+}
+.brand{display:flex;flex-direction:column;gap:1px;margin-right:auto}
+.brand h1{margin:0;font-size:21px;font-weight:700;letter-spacing:.02em;line-height:1.1}
+.brand .sub{font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);font-weight:600}
+.status{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-mid)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ink-dim);flex:none}
+.dot.live{background:#4fbf8b;box-shadow:0 0 0 0 rgba(79,191,139,.5);animation:pulse 2.4s ease-out infinite}
+.dot.err{background:var(--alert);animation:none}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(79,191,139,.45)}70%{box-shadow:0 0 0 7px rgba(79,191,139,0)}100%{box-shadow:0 0 0 0 rgba(79,191,139,0)}}
+@media (prefers-reduced-motion:reduce){.dot.live{animation:none}}
+.counts{display:flex;gap:20px}
+.count .n{font-size:19px;font-weight:600;line-height:1}
+.count .k{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim);font-weight:600}
+
+/* ---------- layout ---------- */
+main{max-width:1280px;margin:0 auto;padding-left:20px;padding-right:20px;padding-block:20px;
+  display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
+@media (max-width:900px){
+  main{grid-template-columns:minmax(0,1fr)}
+  .console{order:-1;position:static}
+}
+
+/* ---------- console (right rail) ---------- */
+.console{display:flex;flex-direction:column;gap:14px;position:sticky;top:78px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius)}
+.card-hd{padding:10px 14px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between;gap:10px}
+
+/* now playing */
+.np{padding:14px}
+.np-tg{font-size:18px;font-weight:600;line-height:1.2;margin:2px 0 1px;text-wrap:balance}
+.np-desc{font-size:13px;color:var(--ink-mid);line-height:1.35;min-height:18px}
+.np-idle{color:var(--ink-dim);font-size:14px;padding:6px 0 2px}
+.bar{height:3px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:12px}
+.bar > i{display:block;height:100%;width:0;background:var(--signal);transition:width .18s linear}
+.np-meta{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-dim);margin-top:6px}
+.transport{display:flex;gap:8px;padding:0 14px 14px}
+.tbtn{flex:1;border:1px solid var(--line);border-radius:var(--radius);padding:7px 0;font-size:12.5px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--ink-mid);background:var(--panel-2)}
+.tbtn:hover{color:var(--ink);border-color:#38434f}
+.tbtn:disabled{opacity:.38;cursor:default}
+.scan{padding:0 14px 14px;display:flex;flex-direction:column;gap:10px}
+.scan-btn{width:100%;border:1px solid var(--signal-dim);background:transparent;color:var(--signal);
+  padding:11px 0;border-radius:var(--radius);font-size:13.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
+.scan-btn[aria-pressed="true"]{background:var(--signal);border-color:var(--signal);color:#1b1305}
+.scan-btn:hover{border-color:var(--signal)}
+.vol{display:flex;align-items:center;gap:10px}
+input[type=range]{flex:1;accent-color:var(--signal);height:18px}
+
+/* talkgroup filter */
+.tg-body{max-height:min(46vh,420px);overflow-y:auto;padding:4px 0}
+.grp{padding:8px 14px 2px}
+.grp-hd{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.grp-hd .swatch{width:3px;height:12px;border-radius:1px;flex:none}
+.grp-hd .nm{font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--ink-mid)}
+.tg{display:flex;align-items:center;gap:9px;padding:3px 0 3px 11px;font-size:13.5px;color:var(--ink-mid)}
+.tg:hover{color:var(--ink)}
+.tg input{accent-color:var(--signal);width:13px;height:13px;flex:none;margin:0}
+.tg .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tg .num{font-size:11px;color:var(--ink-dim)}
+.bell{width:22px;height:20px;border-radius:2px;flex:none;color:var(--ink-dim);font-size:12px;line-height:1;display:grid;place-items:center}
+.bell:hover{color:var(--ink-mid);background:var(--panel-2)}
+.bell[aria-pressed="true"]{color:var(--signal)}
+.mini{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;color:var(--ink-dim)}
+.mini:hover{color:var(--signal)}
+
+/* ---------- activity strip ---------- */
+.spark{display:flex;align-items:flex-end;gap:2px;height:40px;padding:12px 14px 8px}
+.spark i{flex:1;background:var(--line);border-radius:1px 1px 0 0;min-height:2px}
+.spark i.hot{background:var(--signal-dim)}
+.spark-ax{display:flex;justify-content:space-between;padding:0 14px 10px;font-size:10.5px;color:var(--ink-dim)}
+
+/* ---------- call log ---------- */
+.log{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.log-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-bottom:1px solid var(--line-soft)}
+.row{display:grid;grid-template-columns:76px 1fr auto;gap:0 12px;align-items:center;  padding:9px 14px;border-bottom:1px solid var(--line-soft);cursor:pointer;position:relative}
+.row:last-child{border-bottom:none}
+.row:hover{background:var(--panel-2)}
+.row .stripe{width:3px;height:100%;position:absolute;left:0;top:0}
+.row .t{font-size:12.5px;color:var(--ink-mid)}
+.row .who{min-width:0}
+.row .tg-name{display:block;font-size:15px;font-weight:600;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .tg-desc{display:block;font-size:12.5px;color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .right{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--ink-dim)}
+.row.new .tg-name{color:var(--signal)}
+.row.playing{background:#1d252e}
+.row.playing .stripe{background:var(--signal)!important}
+.row.emerg{background:rgba(226,86,74,.07)}
+.chip{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;padding:2px 5px;border-radius:2px;
+  background:var(--alert);color:#fff;flex:none}
+.eq{display:flex;align-items:flex-end;gap:1.5px;height:11px;width:13px;flex:none}
+.eq i{width:2.5px;background:var(--signal);height:30%;border-radius:1px;animation:eq .9s ease-in-out infinite}
+.eq i:nth-child(2){animation-delay:.18s}.eq i:nth-child(3){animation-delay:.36s}
+@keyframes eq{0%,100%{height:25%}50%{height:100%}}
+@media (prefers-reduced-motion:reduce){.eq i{animation:none;height:60%}}
+.empty{padding:34px 16px;text-align:center;color:var(--ink-dim);font-size:14px}
+footer{max-width:1280px;margin:0 auto;padding:6px 20px 28px;font-size:12px;color:var(--ink-dim);line-height:1.6}
+footer a{color:var(--ink-mid)}
+
+/* ---------- responsive: single column ----------
+   Re-stated after the base .console rule above, which otherwise wins on
+   source order and leaves the console stuck over the call log on phones. */
+@media (max-width:900px){
+  .console{order:-1;position:static;top:auto}
+}
+
+/* ---------- responsive: phone ---------- */
+@media (max-width:560px){
+  /* header: keep the brand, status and counters on tidy lines */
+  .hdr-in{gap:6px 14px;padding-left:16px;padding-right:16px}
+  .brand h1{font-size:19px}
+  .brand .sub{font-size:11px;letter-spacing:.07em}
+  .status{font-size:12.5px}
+  .counts{gap:16px}
+
+  main{padding-left:16px;padding-right:16px;padding-block:16px;gap:16px}
+  footer{padding-left:16px;padding-right:16px}
+
+  /* call log rows: give the talkgroup name/description room to breathe */
+  .row{grid-template-columns:62px minmax(0,1fr) auto;gap:0 10px;padding:9px 12px}
+  .row .t{font-size:11.5px;letter-spacing:-.02em}
+  .row .tg-name{font-size:14.5px}
+  .row .right{gap:7px;font-size:11.5px}
+  /* the "Xs ago" span carries an inline width:56px; let it shrink to fit */
+  .row .right > .mono:last-child{width:auto!important;min-width:42px}
+  /* keep the name readable on rows that also carry the Emerg chip / playing bars */
+  .chip{padding:2px 4px;letter-spacing:.06em}
+  .eq{width:11px}
+  .log-hd{padding:10px 12px}
+
+  /* console: comfortable tap targets */
+  .transport{gap:8px;padding:0 12px 12px}
+  .tbtn{padding:11px 0}
+  .np,.scan{padding-left:12px;padding-right:12px}
+  .vol{gap:12px}
+  input[type=range]{height:28px}
+  .card-hd{padding:10px 12px}
+  .mini{padding:4px 2px}
+
+  /* talkgroup filter list */
+  .grp{padding:8px 12px 2px}
+  .tg{gap:10px;padding:7px 0 7px 9px;font-size:14px}
+  .tg input{width:17px;height:17px}
+  .bell{width:34px;height:32px;font-size:15px}
+  .spark{padding:12px 12px 8px}
+  .spark-ax{padding:0 12px 10px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hdr-in">
+    <div class="brand">
+      <h1>Oxford MSWIN</h1>
+      <div class="sub">Lafayette County &middot; Mississippi &middot; P25</div>
+    </div>
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">Connecting&hellip;</span></div>
+    <div class="counts">
+      <div class="count"><div class="n mono" id="cNew">0</div><div class="k">Queued</div></div>
+      <div class="count"><div class="n mono" id="cSession">0</div><div class="k">This session</div></div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="log" aria-label="Live radio traffic">
+    <div class="log-hd">
+      <span class="label">Live traffic</span>
+      <span class="label" id="filterNote">All talkgroups</span>
+    </div>
+    <div id="rows"><div class="empty">Contacting OpenMHz&hellip;</div></div>
+  </section>
+
+  <aside class="console">
+    <div class="card">
+      <div class="card-hd"><span class="label">Now playing</span><span class="label mono" id="npClock"></span></div>
+      <div class="np">
+        <div id="npIdle" class="np-idle">Nothing playing. Turn on Scan to follow traffic live, or click any call below.</div>
+        <div id="npActive" hidden>
+          <div class="label" id="npAgency">&nbsp;</div>
+          <div class="np-tg" id="npTg">&mdash;</div>
+          <div class="np-desc" id="npDesc"></div>
+          <div class="bar"><i id="npBar"></i></div>
+          <div class="np-meta mono"><span id="npPos">0:00</span><span id="npUnits"></span><span id="npLen">0:00</span></div>
+        </div>
+      </div>
+      <div class="transport">
+        <button class="tbtn" id="btnReplay" disabled>Replay</button>
+        <button class="tbtn" id="btnSkip" disabled>Skip</button>
+      </div>
+      <div class="scan">
+        <button class="scan-btn" id="btnScan" aria-pressed="false">Scan off</button>
+        <div class="vol">
+          <span class="label">Vol</span>
+          <input type="range" id="vol" min="0" max="100" value="80" aria-label="Volume">
+          <span class="mono" id="volNum" style="font-size:12px;color:var(--ink-dim);width:28px;text-align:right">80</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd"><span class="label">Activity</span><span class="label">Calls / min &middot; last 30</span></div>
+      <div class="spark" id="spark"></div>
+      <div class="spark-ax"><span>30 min ago</span><span>now</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd">
+        <span class="label">Talkgroups</span>
+        <span style="display:flex;gap:10px"><button class="mini" id="selAll">All</button><button class="mini" id="selNone">None</button></span>
+      </div>
+      <div class="tg-body" id="tgBody"></div>
+    </div>
+  </aside>
+</main>
+
+<footer>
+  Audio and call data come live from <a href="https://openmhz.com/system/oxfmswin" target="_blank" rel="noopener">openmhz.com</a>, which feeds from a volunteer-run receiver &mdash; gaps and outages are normal.
+  The bell icon sends a desktop notification when a talkgroup keys up. Encrypted talkgroups never appear here.
+</footer>
+
+<script>
+"use strict";
+
+/* ---------- talkgroup roster (Oxford MSWIN, pulled from OpenMHz) ---------- */
+const GROUPS = [
+  {name:"Oxford Police",            kind:"law",    tgs:[53682,53685,53688,53689]},
+  {name:"Lafayette County Sheriff", kind:"law",    tgs:[53705,53720,53721,53725,35722]},
+  {name:"Oxford Fire",              kind:"fire",   tgs:[53666,53667,53668,53669,53681]},
+  {name:"Lafayette County Fire",    kind:"fire",   tgs:[53700,53701,53702,53703,53711,53712,53713,53714,53715]},
+  {name:"EMS & Hospital",           kind:"ems",    tgs:[53707,64043,63020]},
+  {name:"Ole Miss Campus",          kind:"campus", tgs:[23950,23951,23952,29956]},
+  {name:"Emergency Management",     kind:"ema",    tgs:[53661,53663,53665]},
+  {name:"MS Highway Patrol",        kind:"law",    tgs:[14021,14023]}
+];
+const TG = {
+  14021:["mhp d2 disp","Mississippi Highway Patrol District 2 - Troop D Dispatch"],
+  14023:["mhp d2 c2c","Mississippi Highway Patrol District 2 - Troop D Car to Car"],
+  23950:["um pd dispatch","University of Mississippi Campus Police - Dispatch"],
+  23951:["um pd 2","University of Mississippi Campus Police 2"],
+  23952:["um pd event 1","University of Mississippi Campus Police Event 1"],
+  29956:["um parking enforcement","University of Mississippi Campus Parking Enforcement"],
+  35722:["36-so swat","Lafayette County Sheriff - S.W.A.T."],
+  53661:["36-ema pri","Oxford Emergency Management - Primary"],
+  53663:["36-ema tac","Oxford Emergency Management - Tactical"],
+  53665:["36-ema admin","Oxford Emergency Management - Administration"],
+  53666:["36-ofd disp","Oxford Fire Dept - Dispatch"],
+  53667:["36-ofd tac 1","Oxford Fire Dept - Tactical 1"],
+  53668:["36-ofd tac 2","Oxford Fire Dept - Tactical 2"],
+  53669:["36-ofd tac 3","Oxford Fire Dept - Tactical 3"],
+  53681:["36-ofd admin","Oxford Fire Dept - Administration"],
+  53682:["36-opd disp","Oxford Police - Primary"],
+  53685:["36-opd detectv","Oxford Police - Detectives"],
+  53688:["36-opd c-c","Oxford Police - Car to Car"],
+  53689:["36-opd admin","Oxford Police - Administration"],
+  53700:["36-lcfd disp","Lafayette County Fire Dept - Dispatch"],
+  53701:["36-lcfd tac","Lafayette County Fire Dept - Tactical"],
+  53702:["36-lcfd admin","Lafayette County Fire Dept - Administration"],
+  53703:["36-lcfd nrthwst","Lafayette County Fire Dept - Northwest"],
+  53705:["36-so disp","Lafayette County Sheriff - Dispatch"],
+  53707:["36-lc emr","Lafayette County Emergency Medical Responders"],
+  53711:["36-lcfd dist1","Lafayette County Fire - District 1"],
+  53712:["36-lcfd dist2","Lafayette County Fire - District 2"],
+  53713:["36-lcfd dist3","Lafayette County Fire - District 3"],
+  53714:["36-lcfd dist4","Lafayette County Fire - District 4"],
+  53715:["36-lcfd rescue","Lafayette County Fire - Rescue"],
+  53720:["36-so c-c","Lafayette County Sheriff - Car to Car"],
+  53721:["36-so invest","Lafayette County Sheriff - Investigations"],
+  53725:["36-so sar","Lafayette County Sheriff - Search and Rescue"],
+  63020:["36-bmh-er","Baptist Memorial Hospital - ER"],
+  64043:["caremed-lafayett","CareMed EMS - Lafayette County"]
+};
+const KIND_COLOR = {law:"var(--law)",fire:"var(--fire)",ems:"var(--ems)",campus:"var(--campus)",ema:"var(--ema)",other:"var(--other)"};
+const TG_GROUP = {};
+GROUPS.forEach(g => g.tgs.forEach(n => TG_GROUP[n] = g));
+const groupOf = n => TG_GROUP[n] || {name:"Other", kind:"other"};
+
+/* ---------- state ---------- */
+const API = "https://api.openmhz.com/oxfmswin/calls";
+const LS = "oxfmswin.v1";
+const calls = [];                 // newest first
+const seen  = new Set();          // call ids ever received
+const played = new Set();         // call ids already heard / skipped
+let queue = [];                   // ids waiting to play (oldest first)
+let current = null;               // call object playing
+let scanning = false;
+let failures = 0;
+let sessionCount = 0;
+let firstLoad = true;
+
+const saved = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; } })();
+const enabled = new Set(saved.enabled || Object.keys(TG).map(Number));
+const alerts  = new Set(saved.alerts  || []);
+let volume = typeof saved.volume === "number" ? saved.volume : 80;
+
+function persist(){
+  try { localStorage.setItem(LS, JSON.stringify({
+    enabled:[...enabled], alerts:[...alerts], volume
+  })); } catch {}
+}
+
+/* ---------- elements ---------- */
+const $ = id => document.getElementById(id);
+const audio = new Audio();
+audio.preload = "auto";
+audio.volume = volume / 100;
+
+/* ---------- helpers ---------- */
+const pad = n => String(n).padStart(2,"0");
+const clock = d => pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+const mmss = s => { s = Math.max(0, Math.round(s||0)); return Math.floor(s/60) + ":" + pad(s%60); };
+function ago(d){
+  const s = Math.max(0, (Date.now() - d) / 1000);
+  if (s < 60) return Math.floor(s) + "s ago";
+  if (s < 3600) return Math.floor(s/60) + "m ago";
+  return Math.floor(s/3600) + "h ago";
+}
+const units = c => [...new Set((c.srcList||[]).map(s => s.src).filter(Boolean))];
+
+/* ---------- alert tone ---------- */
+let actx = null;
+function tone(){
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+    [880, 1320].forEach((f, i) => {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = "sine"; o.frequency.value = f;
+      const t0 = actx.currentTime + i * 0.13;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.14, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.12);
+      o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + 0.14);
+    });
+  } catch {}
+}
+function notify(c){
+  const [alpha, desc] = TG[c.talkgroupNum] || ["Talkgroup " + c.talkgroupNum, ""];
+  tone();
+  if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+    try { new Notification(alpha.toUpperCase(), { body: desc, tag: c._id }); } catch {}
+  }
+}
+
+/* ---------- polling ---------- */
+async function poll(){
+  try {
+    const r = await fetch(API, { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const data = await r.json();
+    failures = 0;
+    ingest(data.calls || []);
+    setStatus(true, "Live · updated " + clock(new Date()));
+  } catch (e) {
+    failures++;
+    setStatus(false, failures > 2 ? "Can't reach OpenMHz · retrying" : "Reconnecting…");
+  } finally {
+    setTimeout(poll, failures > 2 ? 15000 : 5000);
+  }
+}
+
+function ingest(incoming){
+  const fresh = [];
+  for (const c of incoming) {
+    if (seen.has(c._id)) continue;
+    seen.add(c._id);
+    c.at = new Date(c.time).getTime();
+    calls.push(c);
+    fresh.push(c);
+  }
+  if (!fresh.length) { renderCounts(); return; }
+
+  calls.sort((a, b) => b.at - a.at);
+  if (calls.length > 400) calls.length = 400;
+
+  if (firstLoad) {
+    // Don't replay or alert on the backlog that existed before the page opened.
+    fresh.forEach(c => played.add(c._id));
+    firstLoad = false;
+  } else {
+    sessionCount += fresh.length;
+    fresh.sort((a, b) => a.at - b.at);
+    for (const c of fresh) {
+      if (!enabled.has(c.talkgroupNum)) { played.add(c._id); continue; }
+      if (alerts.has(c.talkgroupNum)) notify(c);
+      if (scanning) queue.push(c._id); else played.add(c._id);
+    }
+    if (scanning && !current) playNext();
+  }
+  render();
+}
+
+function setStatus(ok, text){
+  $("dot").className = "dot " + (ok ? "live" : "err");
+  $("statusText").textContent = text;
+}
+
+/* ---------- playback ---------- */
+function callById(id){ return calls.find(c => c._id === id); }
+
+function play(c, fromQueue){
+  if (!c) return;
+  current = c;
+  played.add(c._id);
+  if (!fromQueue) queue = queue.filter(id => id !== c._id);
+  audio.src = c.url;
+  setSessionMeta(c);
+  audio.play().catch(() => { /* blocked until a click; row click always provides one */ });
+  renderNowPlaying();
+  render();
+}
+function playNext(){
+  while (queue.length) {
+    const c = callById(queue.shift());
+    if (c) { play(c, true); return; }
+  }
+  current = null;
+  renderNowPlaying();
+  render();
+}
+audio.addEventListener("ended", () => {
+  if ("mediaSession" in navigator) { try { navigator.mediaSession.playbackState = "paused"; } catch {} }
+  if (scanning) playNext(); else { current = null; renderNowPlaying(); render(); }
+});
+audio.addEventListener("error", () => { if (scanning) playNext(); });
+audio.addEventListener("timeupdate", () => {
+  if (!current) return;
+  const d = audio.duration || current.len || 0;
+  $("npBar").style.width = d ? Math.min(100, (audio.currentTime / d) * 100) + "%" : "0%";
+  $("npPos").textContent = mmss(audio.currentTime);
+  $("npLen").textContent = mmss(d);
+});
+
+/* ---------- rendering ---------- */
+function renderNowPlaying(){
+  const on = !!current;
+  $("npIdle").hidden = on;
+  $("npActive").hidden = !on;
+  $("btnReplay").disabled = !on;
+  $("btnSkip").disabled = !on && !queue.length;
+  if (!on) { $("npBar").style.width = "0%"; return; }
+  const g = groupOf(current.talkgroupNum);
+  const [alpha, desc] = TG[current.talkgroupNum] || ["Talkgroup " + current.talkgroupNum, ""];
+  $("npAgency").textContent = g.name;
+  $("npAgency").style.color = KIND_COLOR[g.kind];
+  $("npTg").textContent = alpha.toUpperCase();
+  $("npDesc").textContent = desc;
+  const u = units(current);
+  $("npUnits").textContent = u.length ? "Unit " + u.join(", ") : "";
+  $("npClock").textContent = clock(new Date(current.at));
+}
+
+function renderCounts(){
+  $("cNew").textContent = queue.length;
+  $("cSession").textContent = sessionCount;
+}
+
+function renderSpark(){
+  const now = Date.now(), buckets = new Array(30).fill(0);
+  for (const c of calls) {
+    const m = Math.floor((now - c.at) / 60000);
+    if (m >= 0 && m < 30) buckets[29 - m]++;
+  }
+  const max = Math.max(1, ...buckets);
+  $("spark").innerHTML = buckets
+    .map(v => '<i class="' + (v ? "hot" : "") + '" style="height:' + Math.round((v / max) * 100) + '%" title="' + v + ' call' + (v === 1 ? "" : "s") + '"></i>')
+    .join("");
+}
+
+function render(){
+  renderCounts();
+  const list = calls.filter(c => enabled.has(c.talkgroupNum));
+  const box = $("rows");
+  if (!list.length) {
+    box.innerHTML = '<div class="empty">' +
+      (calls.length ? "No traffic on the talkgroups you have selected." : "No calls yet — the system is quiet.") + "</div>";
+  } else {
+    box.innerHTML = list.slice(0, 120).map(c => {
+      const g = groupOf(c.talkgroupNum);
+      const [alpha, desc] = TG[c.talkgroupNum] || ["Talkgroup " + c.talkgroupNum, ""];
+      const isCur = current && current._id === c._id;
+      const cls = ["row", isCur ? "playing" : "", (!played.has(c._id) && !isCur) ? "new" : "", c.emergency ? "emerg" : ""].join(" ");
+      const u = units(c);
+      return '<div class="' + cls + '" data-id="' + c._id + '" role="button" tabindex="0">' +
+        '<span class="stripe" style="background:' + KIND_COLOR[g.kind] + '"></span>' +
+        '<span class="t mono">' + clock(new Date(c.at)) + '</span>' +
+        '<span class="who"><span class="tg-name">' + alpha.toUpperCase() + '</span>' +
+        '<span class="tg-desc">' + desc + (u.length ? " · unit " + u[0] : "") + '</span></span>' +
+        '<span class="right">' +
+          (c.emergency ? '<span class="chip">Emerg</span>' : "") +
+          (isCur ? '<span class="eq"><i></i><i></i><i></i></span>' : "") +
+          '<span class="mono">' + mmss(c.len) + '</span>' +
+          '<span class="mono" style="width:56px;text-align:right">' + ago(c.at) + '</span>' +
+        '</span></div>';
+    }).join("");
+  }
+  renderSpark();
+  const n = enabled.size, total = Object.keys(TG).length;
+  $("filterNote").textContent = n === total ? "All talkgroups" : n + " of " + total + " talkgroups";
+}
+
+function renderFilter(){
+  $("tgBody").innerHTML = GROUPS.map(g =>
+    '<div class="grp"><div class="grp-hd"><span class="swatch" style="background:' + KIND_COLOR[g.kind] + '"></span>' +
+    '<span class="nm">' + g.name + "</span></div>" +
+    g.tgs.map(n => {
+      const [alpha, desc] = TG[n] || ["Talkgroup " + n, ""];
+      return '<label class="tg" title="' + desc.replace(/"/g,"&quot;") + '">' +
+        '<input type="checkbox" id="tg-' + n + '" data-tg="' + n + '"' + (enabled.has(n) ? " checked" : "") + '>' +
+        '<span class="nm">' + alpha + '</span><span class="num mono">' + n + '</span>' +
+        '<button class="bell" data-bell="' + n + '" aria-pressed="' + alerts.has(n) + '" ' +
+        'aria-label="Alert me on ' + alpha + '" title="Desktop alert">◉</button></label>';
+    }).join("") + "</div>"
+  ).join("");
+}
+
+/* ---------- events ---------- */
+$("rows").addEventListener("click", e => {
+  const row = e.target.closest(".row"); if (!row) return;
+  const c = callById(row.dataset.id); if (c) play(c, false);
+});
+$("rows").addEventListener("keydown", e => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const row = e.target.closest(".row"); if (!row) return;
+  e.preventDefault();
+  const c = callById(row.dataset.id); if (c) play(c, false);
+});
+
+$("tgBody").addEventListener("change", e => {
+  const n = Number(e.target.dataset.tg); if (!n) return;
+  e.target.checked ? enabled.add(n) : enabled.delete(n);
+  queue = queue.filter(id => { const c = callById(id); return c && enabled.has(c.talkgroupNum); });
+  persist(); render();
+});
+$("tgBody").addEventListener("click", e => {
+  const b = e.target.closest(".bell"); if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const n = Number(b.dataset.bell);
+  if (alerts.has(n)) { alerts.delete(n); }
+  else {
+    alerts.add(n);
+    if (typeof Notification !== "undefined" && Notification.permission === "default") Notification.requestPermission();
+    tone();
+  }
+  b.setAttribute("aria-pressed", alerts.has(n));
+  persist();
+});
+$("selAll").addEventListener("click", () => {
+  Object.keys(TG).forEach(n => enabled.add(Number(n)));
+  renderFilter(); persist(); render();
+});
+$("selNone").addEventListener("click", () => {
+  enabled.clear(); queue = [];
+  renderFilter(); persist(); render();
+});
+
+$("btnScan").addEventListener("click", () => {
+  scanning = !scanning;
+  const b = $("btnScan");
+  b.setAttribute("aria-pressed", scanning);
+  b.textContent = scanning ? "Scanning" : "Scan off";
+  if (scanning) { keepAlive(true); if (!current) playNext(); }
+  else { keepAlive(false); queue = []; renderCounts(); }
+});
+$("btnReplay").addEventListener("click", () => { if (current) { audio.currentTime = 0; audio.play().catch(()=>{}); } });
+$("btnSkip").addEventListener("click", () => { audio.pause(); scanning ? playNext() : (current = null, renderNowPlaying(), render()); });
+$("vol").addEventListener("input", e => {
+  volume = Number(e.target.value); audio.volume = volume / 100;
+  $("volNum").textContent = volume; persist();
+});
+
+/* ---------- phone: lock-screen controls & audio session keepalive ---------- */
+let keepalive = null;
+
+function setSessionMeta(c){
+  if (!("mediaSession" in navigator)) return;
+  const [alpha, desc] = TG[c.talkgroupNum] || ["Talkgroup " + c.talkgroupNum, ""];
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: alpha.toUpperCase(),
+      artist: desc,
+      album: "Oxford MSWIN \u00b7 " + groupOf(c.talkgroupNum).name
+    });
+    navigator.mediaSession.playbackState = "playing";
+  } catch {}
+}
+
+function initSession(){
+  if (!("mediaSession" in navigator)) return;
+  const set = (k, fn) => { try { navigator.mediaSession.setActionHandler(k, fn); } catch {} };
+  set("play",          () => audio.play().catch(() => {}));
+  set("pause",         () => audio.pause());
+  set("nexttrack",     () => { audio.pause(); if (scanning) playNext(); });
+  set("previoustrack", () => { if (current) { audio.currentTime = 0; audio.play().catch(() => {}); } });
+}
+
+// iOS suspends a page once its audio goes quiet, which would stall Scan during the
+// gaps between calls. An effectively silent tone holds the audio session open while
+// Scan is on, and is torn down the moment it is switched off.
+function keepAlive(on){
+  try {
+    if (on) {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === "suspended") actx.resume();
+      if (keepalive) return;
+      const o = actx.createOscillator(), g = actx.createGain();
+      g.gain.value = 0.0001;
+      o.frequency.value = 40;
+      o.connect(g); g.connect(actx.destination); o.start();
+      keepalive = { o, g };
+    } else if (keepalive) {
+      keepalive.o.stop(); keepalive.o.disconnect(); keepalive.g.disconnect();
+      keepalive = null;
+    }
+  } catch {}
+}
+
+/* ---------- boot ---------- */
+$("vol").value = volume;
+$("volNum").textContent = volume;
+renderFilter();
+renderNowPlaying();
+initSession();
+poll();
+setInterval(() => { if (calls.length) render(); }, 15000);  // refresh relative times + activity
+</script>
+</body>
+</html>
