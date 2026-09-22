@@ -65,6 +65,27 @@ re-serves it with that one header. It stores nothing and only talks to openmhz.c
 (`cd proxy && npx wrangler deploy`), paste the URL into **Settings**, press **Test**. Full
 instructions in [proxy/README.md](proxy/README.md).
 
+### Listening through a list of calls
+
+If you are going to listen anyway, you do not need any of the transcription machinery — and
+should not pay for it. Playback streams from OpenMHz straight to an `<audio>` element, which
+needs no CORS, no proxy, no model download and none of the rate-limit pacing, because reading
+bytes is what the media host objects to, not streaming them.
+
+So **Around known times → Play these windows** gathers the calls in your windows (metadata only)
+and plays them end to end like a scanner working a stack of tapes: autoplay, prev/next/stop,
+click any entry to jump, lock-screen controls, and a dead call skipped rather than stalling the
+run. Narrowing to one agency first — **Talkgroups → Only…** — keeps it short: 174 pasted times
+against Oxford Fire alone is about 240 calls, roughly 2.6 minutes to gather and 16 to listen to.
+
+Every entry carries an **↗ all** button. That is the second half of the job: once you have found
+the call, it rebuilds the playlist as *everything on every talkgroup* around that moment — fire,
+police, sheriff, campus, in one timeline, starting on the transmission you were listening to.
+Measured at 159 ms, because it is metadata only. In testing, one fire dispatch call opened out
+into 39 transmissions across four agencies.
+
+Use **Transcribe instead** only when you want to search the words rather than listen.
+
 ### Finding a call you already know something about
 
 **Around known times** takes a list of calls you already have — off a dispatch app, a run sheet,

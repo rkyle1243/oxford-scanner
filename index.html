@@ -285,6 +285,9 @@ textarea.ai-q{resize:vertical;line-height:1.5;font-family:"IBM Plex Mono",monosp
 .hit-tx{font-size:14px;color:var(--ink-mid);line-height:1.5}
 .hit-tx mark{background:rgba(240,168,72,.2);color:var(--signal);padding:0 2px;border-radius:2px;font-weight:600}
 .hit.playing{background:#1d252e}
+.hit-center{background:rgba(240,168,72,.07);box-shadow:inset 3px 0 0 var(--signal)}
+.hit-expand{margin-left:10px;flex:none;font-size:10.5px}
+.hit-expand:hover{color:var(--signal)}
 
 /* transcript line inside the call log + now playing */
 .row .tg-tx{display:block;font-size:12.5px;color:var(--ink-mid);line-height:1.4;margin-top:2px;
@@ -301,6 +304,34 @@ textarea.ai-q{resize:vertical;line-height:1.5;font-family:"IBM Plex Mono",monosp
   .ai-sel{padding:9px 6px;font-size:13px}
   .hit{padding:11px 12px}
   .row .tg-tx{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+}
+
+/* ---------- playlist ---------- */
+.pl-bar{padding:12px 14px;border-bottom:1px solid var(--line-soft);background:var(--panel-2);position:sticky;top:0;z-index:2}
+.pl-bar-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.pl-lbl{font-size:13.5px;font-weight:600}
+.pl-count{font-size:12px;color:var(--ink-dim)}
+.pl-ctl{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.pl-ctl .btn{padding:8px 14px;flex:1 1 auto}
+.pl-item{display:grid;grid-template-columns:30px 62px minmax(0,1fr) auto;gap:0 10px;align-items:center;
+  padding:8px 14px;border-bottom:1px solid var(--line-soft);cursor:pointer;position:relative}
+.pl-item:last-child{border-bottom:none}
+.pl-item:hover{background:var(--panel-2)}
+.pl-item.played{opacity:.5}
+.pl-item.playing{background:#1d252e;opacity:1}
+.pl-item.playing .pl-tg{color:var(--signal)}
+.pl-n{font-size:11px;color:var(--ink-dim);text-align:right}
+.pl-t{font-size:12.5px;color:var(--ink-mid)}
+.pl-who{min-width:0}
+.pl-tg{display:block;font-size:14px;font-weight:600;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl-who .tg-desc,.pl-who .tg-tx{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl-right{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--ink-dim);flex-wrap:nowrap;white-space:nowrap}
+.pl-right .mini{font-size:10px;letter-spacing:.06em;padding:3px 6px;border:1px solid var(--line);border-radius:2px}
+.pl-right .mini:hover{color:var(--signal);border-color:var(--signal-dim)}
+@media (max-width:560px){
+  .pl-item{grid-template-columns:24px 54px minmax(0,1fr) auto;gap:0 8px;padding:9px 12px}
+  .pl-bar{padding:12px}
+  .pl-ctl .btn{padding:11px 8px}
 }
 
 /* header entry point for search */
@@ -443,7 +474,8 @@ textarea.ai-q{resize:vertical;line-height:1.5;font-family:"IBM Plex Mono",monosp
               <option value="15">&plusmn; 15 min</option>
               <option value="30">&plusmn; 30 min</option>
             </select>
-            <button class="btn" id="aiWinGo" disabled>Transcribe these windows</button>
+            <button class="btn" id="aiWinPlay" disabled>Play these windows</button>
+            <button class="btn ghost" id="aiWinGo" disabled title="Only needed if you want to search the words later">Transcribe instead</button>
           </div>
           <div class="ai-note" id="aiTimesNote">One time per line.</div>
         </div>
@@ -524,7 +556,14 @@ textarea.ai-q{resize:vertical;line-height:1.5;font-family:"IBM Plex Mono",monosp
     <div class="card">
       <div class="card-hd">
         <span class="label">Talkgroups</span>
-        <span style="display:flex;gap:10px"><button class="mini" id="selAll">All</button><button class="mini" id="selNone">None</button></span>
+        <span style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="mini" id="selAll">All</button>
+          <button class="mini" id="selNone">None</button>
+          <select class="mini" id="selOnly" aria-label="Select one agency only"
+                  style="background:var(--panel-2);border:1px solid var(--line);border-radius:2px;padding:2px 3px">
+            <option value="">Only&hellip;</option>
+          </select>
+        </span>
       </div>
       <div class="tg-body" id="tgBody"></div>
     </div>
@@ -903,9 +942,14 @@ function playNext(){
 }
 audio.addEventListener("ended", () => {
   if ("mediaSession" in navigator) { try { navigator.mediaSession.playbackState = "paused"; } catch {} }
+  if (aiPL.active) { aiPlaylistNext(); return; }
   if (scanning) playNext(); else { current = null; renderNowPlaying(); render(); }
 });
-audio.addEventListener("error", () => { if (scanning) playNext(); });
+// A call whose audio will not load must not stall the whole run.
+audio.addEventListener("error", () => {
+  if (aiPL.active) { aiPlaylistNext(); return; }
+  if (scanning) playNext();
+});
 audio.addEventListener("timeupdate", () => {
   if (!current) return;
   const d = audio.duration || current.len || 0;
@@ -1092,6 +1136,23 @@ $("selAll").addEventListener("click", () => {
   Object.keys(TG).forEach(n => enabled.add(Number(n)));
   renderFilter(); persist(); render();
 });
+(() => {   // fill the "Only..." picker from the roster
+  const sel = $("selOnly");
+  for (const g of GROUPS) {
+    const o = document.createElement("option");
+    o.value = g.name; o.textContent = g.name;
+    sel.appendChild(o);
+  }
+})();
+$("selOnly").addEventListener("change", e => {
+  const g = GROUPS.find(x => x.name === e.target.value);
+  e.target.value = "";
+  if (!g) return;
+  enabled.clear();
+  g.tgs.forEach(n => enabled.add(n));
+  queue = [];
+  renderFilter(); persist(); render();
+});
 $("selNone").addEventListener("click", () => {
   enabled.clear(); queue = [];
   renderFilter(); persist(); render();
@@ -1106,7 +1167,11 @@ $("btnScan").addEventListener("click", () => {
   else { keepAlive(false); queue = []; renderCounts(); }
 });
 $("btnReplay").addEventListener("click", () => { if (current) { audio.currentTime = 0; audio.play().catch(()=>{}); } });
-$("btnSkip").addEventListener("click", () => { audio.pause(); scanning ? playNext() : (current = null, renderNowPlaying(), render()); });
+$("btnSkip").addEventListener("click", () => {
+  audio.pause();
+  if (aiPL.active) return aiPlaylistNext();
+  scanning ? playNext() : (current = null, renderNowPlaying(), render());
+});
 $("vol").addEventListener("input", e => {
   volume = Number(e.target.value); audio.volume = volume / 100;
   $("volNum").textContent = volume; persist();
@@ -1133,7 +1198,7 @@ function initSession(){
   const set = (k, fn) => { try { navigator.mediaSession.setActionHandler(k, fn); } catch {} };
   set("play",          () => audio.play().catch(() => {}));
   set("pause",         () => audio.pause());
-  set("nexttrack",     () => { audio.pause(); if (scanning) playNext(); });
+  set("nexttrack",     () => { audio.pause(); if (aiPL.active) return aiPlaylistNext(); if (scanning) playNext(); });
   set("previoustrack", () => { if (current) { audio.currentTime = 0; audio.play().catch(() => {}); } });
 }
 
@@ -2017,7 +2082,7 @@ function aiRenderResults(note){
 }
 
 function aiDoSearch(){
-  aiIncidents = null;
+  aiIncidents = null; aiTimeline = null;
   const q = $("aiQuery").value.trim();
   if (!q) { aiHits = []; aiRenderResults(TX.size ? "" : "Nothing is transcribed yet — pick a range below and transcribe it."); return; }
   if (!TX.size) { aiHits = []; aiRenderResults("Nothing is transcribed yet — pick a range below and transcribe it."); return; }
@@ -2135,7 +2200,7 @@ function aiRenderWindowPreview(){
   const ahead  = good.filter(s => s.ms > Date.now()).length;
 
   const el = $("aiTimesNote");
-  if (!good.length) { el.textContent = stamps.length ? "No times recognised yet." : "One time per line."; $("aiWinGo").disabled = true; return; }
+  if (!good.length) { el.textContent = stamps.length ? "No times recognised yet." : "One time per line."; $("aiWinGo").disabled = true; $("aiWinPlay").disabled = true; return; }
   const minutes = merged.reduce((a, w) => a + (w[1] - w[0]) / 60000, 0);
   const parts = [good.length + " time" + (good.length === 1 ? "" : "s"),
                  merged.length + " window" + (merged.length === 1 ? "" : "s") + " after merging",
@@ -2158,6 +2223,7 @@ function aiRenderWindowPreview(){
     (bad.length ? '<div style="margin-top:6px;color:var(--alert)">Not understood: ' +
       esc(bad.slice(0,3).map(b=>b.line.slice(0,40)).join(" · ")) + "</div>" : "");
   $("aiWinGo").disabled = false;
+  $("aiWinPlay").disabled = false;
 }
 
 async function aiIndexWindows(){
@@ -2246,13 +2312,14 @@ function aiHitHtml(h, idx){
   const r = h.rec, g = groupOf(r.tg);
   const [alpha] = TG[r.tg] || ["Talkgroup " + r.tg, ""];
   const isCur = current && current._id === r._id;
-  return '<div class="hit' + (isCur ? " playing" : "") + '" data-hit="' + idx + '" role="button" tabindex="0">' +
+  return '<div class="hit' + (isCur ? " playing" : "") + (h.center ? " hit-center" : "") + '" data-hit="' + idx + '" role="button" tabindex="0">' +
     '<span class="stripe" style="background:' + KIND_COLOR[g.kind] + '"></span>' +
     '<span class="hit-top">' +
       '<span class="hit-tg">' + esc(alpha.toUpperCase()) + "</span>" +
       '<span class="hit-when mono" title="' + esc(exactStamp(r.at)) + '">' + esc(shortStamp(r.at)) + " · " + mmss(r.len) + "</span>" +
       (r.emergency ? '<span class="chip">Emerg</span>' : "") +
       (h.rel != null ? '<span class="hit-score">' + (h.rel >= 0.95 ? "strong" : h.rel >= 0.55 ? "likely" : "loose") + " match</span>" : "") +
+      '<button class="mini hit-expand" data-expand="' + r.at + '" title="Show every talkgroup around this moment">&#8599; all talkgroups</button>' +
     "</span>" +
     '<span class="hit-tx">' + (r.text ? aiHighlight(r.text, h.marks || [], true) : "<em style=\'opacity:.55\'>no speech picked up</em>") + "</span>" +
   "</div>";
@@ -2283,6 +2350,200 @@ function aiRenderIncidents(){
   box.innerHTML = parts.join("");
 }
 
+/* ---------- widening out from one transmission ----------
+   Finding the call is only half of it. Once you have the moment, what you
+   actually want is everyone who was talking around it -- dispatch, the engine,
+   the ambulance, the deputy who got there first -- in one timeline, regardless
+   of which talkgroup carried it. This fetches whatever is still missing for
+   that window across every talkgroup and lays it out in order. */
+let aiTimeline = null;
+
+async function aiExpandAround(centerMs, padMin){
+  if (aiJob.running) return;
+  const pad = (padMin || 5) * 60000;
+  const from = centerMs - pad, to = centerMs + pad;
+
+  aiTimeline = { centerMs, pad, loading: true };
+  aiRenderTimeline();
+
+  if (proxied("https://media2.openmhz.com/x.m4a")) {
+    Object.assign(aiJob, { running:true, cancel:false, done:0, total:0, ok:0, fail:0, label:"Finding every talkgroup around " + shortStamp(centerMs), rate:0 });
+    aiRenderJob();
+    try { await ensureASR(); } catch {}
+    const all = await aiCollectRange(from, to, () => {}, () => aiJob.cancel, null);   // null = every talkgroup
+    const todo = all.filter(c => !TX.has(c._id) && (c.len || 0) >= aiCfg.minLen);
+    aiJob.running = false;
+    if (todo.length) await aiRunIndex(todo, "Filling in " + todo.length + " transmissions around " + shortStamp(centerMs));
+    else aiRenderJob();
+  }
+
+  aiTimeline.loading = false;
+  aiRenderTimeline();
+}
+
+function aiRenderTimeline(){
+  if (!aiTimeline) return;
+  const { centerMs, pad, loading } = aiTimeline;
+  const recs = [...TX.values()]
+    .filter(r => r.at >= centerMs - pad && r.at <= centerMs + pad)
+    .sort((a, b) => a.at - b.at);
+
+  aiHits = [];
+  const parts = ['<div class="day-div">Everything on the air · ' + esc(exactStamp(centerMs)) +
+    " · &plusmn;" + Math.round(pad / 60000) + " min · " + recs.length + " transmission" + (recs.length === 1 ? "" : "s") +
+    " · " + new Set(recs.map(r => r.tg)).size + " talkgroup" + (new Set(recs.map(r => r.tg)).size === 1 ? "" : "s") + "</div>"];
+
+  if (loading) parts.push('<div class="empty" style="padding:14px">Fetching the rest of the talkgroups&hellip;</div>');
+  if (!recs.length && !loading) parts.push('<div class="empty" style="padding:16px">Nothing transcribed in this window.</div>');
+
+  for (const rec of recs) {
+    const near = Math.abs(rec.at - centerMs) <= 1000;
+    parts.push(aiHitHtml({ rec, marks: [], center: near }, aiHits.length));
+    aiHits.push({ rec, marks: [] });
+  }
+  $("aiResults").innerHTML = parts.join("");
+}
+
+/* ---------- playlists ----------
+   Transcribing is only worth it if you want to *search* the words. If you are
+   going to listen anyway, none of it is needed: playback streams straight from
+   OpenMHz to an <audio> element, which needs no proxy, no model and no
+   transcribing, and is not what the media host rate-limits. So this gathers
+   the calls in your windows -- metadata only -- and plays them end to end like
+   a scanner working through a stack of tapes. */
+const aiPL = { items: [], idx: -1, active: false, label: "", center: null };
+
+function aiPlaylistLoad(items, label, center){
+  aiPL.items = items; aiPL.idx = -1; aiPL.active = true; aiPL.label = label; aiPL.center = center || null;
+  aiIncidents = null; aiTimeline = null; aiHits = [];
+  // Scan and a playlist both want to drive the player; a playlist wins.
+  if (scanning) { scanning = false; $("btnScan").setAttribute("aria-pressed", "false"); $("btnScan").textContent = "Scan off"; queue = []; }
+  aiRenderPlaylist();
+}
+
+function aiPlaylistPlay(i){
+  if (!aiPL.items.length) return;
+  if (i < 0) i = 0;
+  if (i >= aiPL.items.length) {                 // reached the end
+    aiPL.idx = aiPL.items.length; aiPL.active = false;
+    audio.pause(); current = null; renderNowPlaying(); aiRenderPlaylist();
+    return;
+  }
+  aiPL.idx = i; aiPL.active = true;
+  play(aiPL.items[i], false);
+  aiRenderPlaylist();
+  const row = document.querySelector(".pl-item.playing");
+  if (row) row.scrollIntoView({ block: "nearest" });
+}
+const aiPlaylistNext = () => aiPlaylistPlay(aiPL.idx + 1);
+const aiPlaylistPrev = () => aiPlaylistPlay(aiPL.idx - 1);
+
+function aiRenderPlaylist(){
+  const box = $("aiResults");
+  if (!aiPL.items.length) { box.innerHTML = '<div class="empty">Nothing to play.</div>'; return; }
+
+  const done = Math.min(aiPL.idx + 1, aiPL.items.length);
+  const totalSec = aiPL.items.reduce((a, c) => a + (c.len || 0), 0);
+  const leftSec = aiPL.items.slice(Math.max(0, aiPL.idx + 1)).reduce((a, c) => a + (c.len || 0), 0);
+
+  const head = '<div class="pl-bar">' +
+    '<div class="pl-bar-top">' +
+      '<span class="pl-lbl">' + esc(aiPL.label) + "</span>" +
+      '<span class="pl-count mono">' + done + " / " + aiPL.items.length + " · " + mmss(leftSec) + " left of " + mmss(totalSec) + "</span>" +
+    "</div>" +
+    '<div class="ai-prog"><i style="width:' + Math.round((done / aiPL.items.length) * 100) + '%"></i></div>' +
+    '<div class="pl-ctl">' +
+      '<button class="btn ghost" id="plPrev">&#9664; Prev</button>' +
+      '<button class="btn" id="plPlay">' + (aiPL.active && current ? "Pause" : aiPL.idx < 0 ? "Play all" : "Resume") + "</button>" +
+      '<button class="btn ghost" id="plNext">Next &#9654;</button>' +
+      '<button class="btn ghost" id="plStop">Stop</button>' +
+    "</div></div>";
+
+  let lastDay = null;
+  const rows = aiPL.items.map((c, i) => {
+    const g = groupOf(c.talkgroupNum);
+    const [alpha, desc] = TG[c.talkgroupNum] || ["Talkgroup " + c.talkgroupNum, ""];
+    const isCur = i === aiPL.idx;
+    const tx = TX.get(c._id);
+    let div = "";
+    const dk = dayKey(c.at);
+    if (dk !== lastDay) { div = '<div class="day-div">' + dayLabel(c.at) + "</div>"; lastDay = dk; }
+    return div + '<div class="pl-item' + (isCur ? " playing" : "") + (i < aiPL.idx ? " played" : "") +
+        (aiPL.center && Math.abs(c.at - aiPL.center) <= 1000 ? " hit-center" : "") + '" data-pl="' + i + '" role="button" tabindex="0">' +
+      '<span class="stripe" style="background:' + KIND_COLOR[g.kind] + '"></span>' +
+      '<span class="pl-n mono">' + (i + 1) + "</span>" +
+      '<span class="pl-t mono" title="' + esc(exactStamp(c.at)) + '">' + clock(new Date(c.at)) + "</span>" +
+      '<span class="pl-who"><span class="pl-tg">' + esc(alpha.toUpperCase()) + "</span>" +
+        (tx && tx.text ? '<span class="tg-tx">' + esc(tx.text) + "</span>" : '<span class="tg-desc">' + esc(desc) + "</span>") +
+      "</span>" +
+      '<span class="pl-right">' +
+        (c.emergency ? '<span class="chip">Emerg</span>' : "") +
+        (isCur ? '<span class="eq"><i></i><i></i><i></i></span>' : "") +
+        '<span class="mono">' + mmss(c.len) + "</span>" +
+        '<button class="mini" data-around="' + c.at + '" title="Everything on every talkgroup around this moment">&#8599; all</button>' +
+      "</span></div>";
+  }).join("");
+
+  box.innerHTML = head + rows;
+}
+
+/* Gather the calls for a set of windows. Metadata only -- no audio is touched
+   until you press play, and then the browser streams it directly. */
+async function aiGatherWindows(windows, tgs, onProgress){
+  const found = new Map();
+  for (let i = 0; i < windows.length; i++) {
+    if (aiJob.cancel) break;
+    onProgress && onProgress(i + 1, windows.length, found.size);
+    const list = await aiCollectRange(windows[i][0], windows[i][1], () => {}, () => aiJob.cancel, tgs);
+    for (const c of list) found.set(c._id, c);
+  }
+  return [...found.values()]
+    .filter(c => (c.len || 0) >= aiCfg.minLen)
+    .sort((a, b) => a.at - b.at);
+}
+
+async function aiPlayWindows(){
+  if (aiJob.running) return;
+  const stamps = aiParseTimes($("aiTimes").value, $("aiTimesDate").value);
+  const windows = aiMergeWindows(stamps, Number($("aiPad").value) * 60000);
+  if (!windows.length) return;
+
+  const scoped = ($("aiScope").checked && enabled.size && enabled.size < Object.keys(TG).length) ? [...enabled] : null;
+  Object.assign(aiJob, { running:true, cancel:false, done:0, total:windows.length, ok:0, fail:0, rate:0, label:"Gathering calls…" });
+  aiRenderJob();
+  const items = await aiGatherWindows(windows, scoped, (i, n, found) => {
+    aiJob.done = i; aiJob.total = n; aiJob.rate = 1;
+    aiJob.label = "Gathering calls · window " + i + " of " + n + " · " + found + " found";
+    aiRenderJob();
+  });
+  aiJob.running = false; aiRenderJob();
+
+  if (!items.length) {
+    $("aiIndexHint").textContent = "No calls found in those windows on the talkgroups you have selected.";
+    return;
+  }
+  const secs = items.reduce((a, c) => a + (c.len || 0), 0);
+  $("aiIndexHint").textContent = items.length.toLocaleString() + " calls · " + mmss(secs) + " of audio. Press Play all.";
+  aiPlaylistLoad(items, items.length.toLocaleString() + " calls across " + windows.length + " window" + (windows.length === 1 ? "" : "s"), null);
+}
+
+// Widening out from whatever is playing: same moment, every talkgroup.
+async function aiPlayAround(centerMs, padMin){
+  if (aiJob.running) return;
+  const pad = (padMin || 5) * 60000;
+  Object.assign(aiJob, { running:true, cancel:false, done:0, total:1, ok:0, fail:0, rate:1, label:"Finding every talkgroup around " + shortStamp(centerMs) });
+  aiRenderJob();
+  const items = await aiGatherWindows([[centerMs - pad, centerMs + pad]], null, null);
+  aiJob.running = false; aiRenderJob();
+  if (!items.length) { $("aiIndexHint").textContent = "Nothing found around that moment."; return; }
+
+  const tgs = new Set(items.map(c => c.talkgroupNum));
+  aiPlaylistLoad(items, "Everything around " + shortStamp(centerMs) + " · ±" + Math.round(pad / 60000) + " min · " +
+    tgs.size + " talkgroup" + (tgs.size === 1 ? "" : "s"), centerMs);
+  const start = items.findIndex(c => c.at >= centerMs - 30000);
+  aiPlaylistPlay(start < 0 ? 0 : start);
+}
+
 /* ---------- events ---------- */
 $("aiToggle").addEventListener("click", () => aiOpen());
 $("aiSearch").addEventListener("click", aiDoSearch);
@@ -2297,6 +2558,12 @@ $("aiSettings").addEventListener("click", () => {
 });
 
 $("aiResults").addEventListener("click", e => {
+  const exp = e.target.closest("[data-expand]");
+  if (exp) {
+    e.stopPropagation();
+    aiExpandAround(Number(exp.dataset.expand), Number($("aiPad").value) || 5);
+    return;
+  }
   const all = e.target.closest("[data-all]");
   if (all) {
     const inc = aiIncidents && aiIncidents.find(i => String(i.ms) === all.dataset.all);
@@ -2333,6 +2600,33 @@ $("aiTimes").addEventListener("input", aiRenderWindowPreview);
 $("aiTimesDate").addEventListener("change", aiRenderWindowPreview);
 $("aiPad").addEventListener("change", aiRenderWindowPreview);
 $("aiWinGo").addEventListener("click", aiIndexWindows);
+$("aiWinPlay").addEventListener("click", aiPlayWindows);
+
+$("aiResults").addEventListener("click", e => {
+  const around = e.target.closest("[data-around]");
+  if (around) { e.stopPropagation(); aiPlayAround(Number(around.dataset.around), Number($("aiPad").value) || 5); return; }
+  const item = e.target.closest(".pl-item");
+  if (item) { aiPlaylistPlay(Number(item.dataset.pl)); return; }
+  const id = e.target.id;
+  if (id === "plNext") return aiPlaylistNext();
+  if (id === "plPrev") return aiPlaylistPrev();
+  if (id === "plStop") { aiPL.active = false; audio.pause(); current = null; renderNowPlaying(); aiRenderPlaylist(); return; }
+  if (id === "plPlay") {
+    if (aiPL.idx < 0) return aiPlaylistPlay(0);
+    if (audio.paused) { aiPL.active = true; audio.play().catch(() => {}); }
+    else audio.pause();
+    aiRenderPlaylist();
+    return;
+  }
+});
+$("aiResults").addEventListener("keydown", e => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const item = e.target.closest(".pl-item");
+  if (item) { e.preventDefault(); aiPlaylistPlay(Number(item.dataset.pl)); }
+});
+// keep the transport label and the playlist in step with the player
+audio.addEventListener("play",  () => { if (aiPL.items.length) aiRenderPlaylist(); });
+audio.addEventListener("pause", () => { if (aiPL.items.length) aiRenderPlaylist(); });
 $("aiRange").addEventListener("change", () => {
   if (aiJob.running) return;
   const h = Number($("aiRange").value) || 6;
