@@ -83,7 +83,15 @@ Findings from probing the live API, recorded here because they constrain the des
   so the roster is baked into the page. It is readable now (see below), but the API omits the
   short `alphaTag` names, so the baked-in copy still earns its place.
 - `/calls` returns only the **latest 50 calls**, and `time`/`direction` query parameters on it do
-  nothing. History lives at a different path: `GET /oxfmswin/calls/older?time=<epoch_ms>` returns the
+  nothing. **50 is hardcoded server-side** (`defaultNumResults` in the trunk-server source, never
+  read from the query string), so there is no page-size to raise and no bulk export to reach for:
+  the full published route list is `/call/:id`, `/calls`, `/calls/latest`, `/calls/next`,
+  `/calls/newer`, `/calls/older`, `/calls/date`, `/talkgroups`, `/groups`, `/systems`, `/stats`,
+  `/events` and the uploader's `/upload`. Nothing returns audio in bulk.
+- `/calls/older` accepts **`filter-type=talkgroup` with a comma-separated `filter-code`**, which
+  filters server-side. Undocumented but real, and worth using: collecting 6 hours of one
+  talkgroup took **6 requests filtered against 15 unfiltered**, returning the identical 278 calls.
+  The narrower your talkgroup selection, the bigger the saving. History lives at a different path: `GET /oxfmswin/calls/older?time=<epoch_ms>` returns the
   50 calls immediately before that moment, and `/calls/newer?time=<epoch_ms>` walks the other way.
   Page backwards by passing the oldest timestamp you already hold. Both are CORS-open like `/calls`.
 - **Retention is roughly 30 days.** A request anchored 30 days back returns calls; 33 days back

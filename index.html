@@ -1237,7 +1237,7 @@ function proxied(url){
    through one shared pacer that widens the gap when it gets pushed back and
    narrows it again while things are going well. This is the difference
    between indexing an hour of traffic and indexing half of it. */
-const aiPace = { gap:380, next:0, min:250, max:3000, throttled:0, streak:0, coolUntil:0, reason:"" };
+const aiPace = { gap:300, next:0, min:250, max:3000, throttled:0, streak:0, coolUntil:0, reason:"" };
 function paceWait(){
   const now = Date.now();
   const at = Math.max(now, aiPace.next, aiPace.coolUntil);
@@ -1710,13 +1710,20 @@ function aiSearchIndex(query, opts){
    /calls/older hands back 50 at a time walking backwards, so a range is just
    that walk repeated until it steps past the start of the window. This only
    fetches call metadata -- no audio -- so it is quick even over days. */
-async function aiCollectRange(fromMs, toMs, onCount, cancelled){
+async function aiCollectRange(fromMs, toMs, onCount, cancelled, tgs){
+  // The API can filter server-side -- filter-type=talkgroup with a comma
+  // separated filter-code -- which the rest of the page never needed but this
+  // does. Without it, narrowing to one talkgroup still pages through every
+  // call on the system and throws most of each page away: 50 unfiltered calls
+  // spanned 26 minutes in testing, where 50 calls of a single talkgroup spanned
+  // 65. Over days that is the difference between hundreds of requests and tens.
+  const filter = (tgs && tgs.length) ? "&filter-type=talkgroup&filter-code=" + tgs.join(",") : "";
   const found = new Map();
   let anchor = toMs, pages = 0;
   while (!cancelled() && pages++ < 1200) {
     let list;
     try {
-      const r = await fetch(OLDER_API + anchor, { cache: "no-store" });
+      const r = await fetch(OLDER_API + anchor + filter, { cache: "no-store" });
       if (!r.ok) throw new Error("HTTP " + r.status);
       list = (await r.json()).calls || [];
     } catch { break; }
@@ -1890,7 +1897,9 @@ async function aiIndexRange(hours){
 
   aiJob.label = "Finding calls…"; aiRenderJob();
   const to = Date.now(), from = to - hours * 3600000;
-  const all = await aiCollectRange(from, to, n => { aiJob.label = "Finding calls… " + n + " so far"; aiRenderJob(); }, () => aiJob.cancel);
+  // Only worth filtering when something is actually deselected.
+  const scoped = ($("aiScope").checked && enabled.size && enabled.size < Object.keys(TG).length) ? [...enabled] : null;
+  const all = await aiCollectRange(from, to, n => { aiJob.label = "Finding calls… " + n + " so far"; aiRenderJob(); }, () => aiJob.cancel, scoped);
 
   const todo = all.filter(c => !TX.has(c._id) && (!$("aiScope").checked || enabled.has(c.talkgroupNum)));
   aiJob.running = false;
