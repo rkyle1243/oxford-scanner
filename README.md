@@ -65,6 +65,41 @@ re-serves it with that one header. It stores nothing and only talks to openmhz.c
 (`cd proxy && npx wrangler deploy`), paste the URL into **Settings**, press **Test**. Full
 instructions in [proxy/README.md](proxy/README.md).
 
+### Why it skips the shortest calls
+
+Sampling calls by length and transcribing them shows where real speech starts:
+
+| Length | Returns text | What it actually says |
+|---|---|---|
+| 1s | 55% | "important." · "Good job." · "Incredible." |
+| 2s | 91% | "This makes me fall." · "Simple." |
+| 3s | 82% | "61 that's negative" · "54 that's negative" |
+| 4–5s | 95% | "17 or P you traffic. I'm back in service." |
+
+A one-second key-up is squelch noise, and Whisper does not answer "nothing" — it invents a
+confident little sentence. No fire department says "Incredible." Those inventions get indexed and
+then match searches, so they are worse than a blank. Real traffic only starts appearing around
+three seconds.
+
+So calls under two seconds are skipped outright (about 10% of traffic, saving the whole round
+trip), and anything that comes back as a lone stock phrase is discarded. Change or disable the
+threshold under **Settings**.
+
+### How long a range actually takes
+
+The media host caps out around 4–5 requests/second and fetching is ~58% of the per-call cost
+(295 ms fetch vs 213 ms to transcribe a median 4-second call), so throughput is bounded by
+OpenMHz, not by your GPU. Measured: one week of Oxford Fire's five talkgroups is **2,503 calls /
+318 minutes of audio**, roughly 20 minutes to index. A month of *everything* is tens of thousands
+of calls and many hours.
+
+Two things make that livable, and neither is waiting:
+
+- **The index is permanent and resumable.** Transcripts are keyed by call id, so re-running a
+  range only fetches what is missing. Stop whenever, pick it up later.
+- **Turn on live transcription and stop bulk-indexing the past.** The index then builds itself
+  from now on for free, and you only transcribe history when you specifically need a window.
+
 ### How much to trust a transcript
 
 Not very much, word for word. These are short bursts of compressed, noisy, clipped trunked audio

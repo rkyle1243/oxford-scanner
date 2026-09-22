@@ -383,6 +383,12 @@ footer a{color:var(--ink-mid)}
               <option value="base">Balanced &middot; base.en &middot; ~85 MB</option>
               <option value="small">Accurate &middot; small.en &middot; ~260 MB</option>
             </select>
+            <select class="ai-sel" id="aiMinLen" aria-label="Shortest call worth transcribing">
+              <option value="0">Transcribe every call</option>
+              <option value="2">Skip calls under 2s</option>
+              <option value="3">Skip calls under 3s</option>
+              <option value="5">Skip calls under 5s</option>
+            </select>
             <label class="ai-chk"><input type="checkbox" id="aiLive"> Transcribe live traffic</label>
             <label class="ai-chk"><input type="checkbox" id="aiShowRows" checked> Show transcripts in the log</label>
           </div>
@@ -1161,7 +1167,8 @@ const aiCfg = (() => {
     proxy:    typeof s.proxy === "string" ? s.proxy : "",
     model:    AI_MODELS[s.model] ? s.model : "base",
     live:     !!s.live,
-    showRows: s.showRows !== false
+    showRows: s.showRows !== false,
+    minLen:   typeof s.minLen === "number" ? s.minLen : 2
   };
 })();
 function aiPersist(){ try { localStorage.setItem(AI_LS, JSON.stringify(aiCfg)); } catch {} }
@@ -1432,7 +1439,13 @@ async function transcribeCall(c){
 // Whisper fills silence with hallucinated boilerplate -- subtitle credits and
 // bracketed sound effects. On 3-second radio bursts that is most of what a
 // dead-air clip produces, and it would otherwise pollute every search.
-const TX_JUNK = /^(?:\s*[\[(][^\])]*[\])]\s*|\s*(?:thank you(?: for watching)?|thanks for watching|you|bye|subscribe|okay|ok)[.!]?\s*)+$/i;
+/* Whisper does not return "nothing" for a clip with no speech in it -- it
+   returns a confident short sentence it invented. Sampling one-second calls
+   off this system produced "important.", "Good job." and "Incredible.", none
+   of which anybody said. These are worse than useless: they are indexed and
+   they match searches. Anything this short that comes back as a single stock
+   phrase is thrown away. */
+const TX_JUNK = /^(?:\s*[\[(][^\])]*[\])]\s*|\s*(?:thank you(?: for watching)?|thanks for watching|you|bye|subscribe|okay|ok|important|good job|incredible|simple|amazing|wow|yeah|yes|no|hello|hi|right|sure|nice|great|perfect|exactly|beautiful|oh|um|uh|mm|hmm|so|well|and|but|the end|applause|music)[.!?]?\s*)+$/i;
 function cleanTranscript(t){
   let s = String(t || "").replace(/\s+/g, " ").trim();
   s = s.replace(/\s*[\[(](?:music|laughter|applause|silence|beep\w*|phone\s*\w*|inaudible|blank_audio|noise|静音)[^\])]*[\])]\s*/gi, " ").trim();
@@ -1901,7 +1914,11 @@ async function aiIndexRange(hours){
   const scoped = ($("aiScope").checked && enabled.size && enabled.size < Object.keys(TG).length) ? [...enabled] : null;
   const all = await aiCollectRange(from, to, n => { aiJob.label = "Finding calls… " + n + " so far"; aiRenderJob(); }, () => aiJob.cancel, scoped);
 
-  const todo = all.filter(c => !TX.has(c._id) && (!$("aiScope").checked || enabled.has(c.talkgroupNum)));
+  const inScope = all.filter(c => !TX.has(c._id) && (!$("aiScope").checked || enabled.has(c.talkgroupNum)));
+  // Under a couple of seconds there is nothing to hear and plenty to invent,
+  // so these are never fetched at all -- the saving is the whole round trip.
+  const todo = inScope.filter(c => (c.len || 0) >= aiCfg.minLen);
+  const skipped = inScope.length - todo.length;
   aiJob.running = false;
   if (aiJob.cancel || !todo.length) {
     aiRenderJob();
@@ -1913,9 +1930,11 @@ async function aiIndexRange(hours){
   // A range is whatever the system was busy enough to produce, so the same
   // "last 6 hours" can be 200 calls or 2,000. Say which before starting, and
   // say roughly how long it will sit there.
-  const guess = todo.length * 0.9 * 1000;
+  const guess = todo.length * 0.65 * 1000;
   $("aiIndexHint").textContent = "Transcribing " + todo.length.toLocaleString() + " calls — roughly " +
-    aiFmtDur(guess) + " if OpenMHz doesn't throttle, longer if it does. The scanner keeps working meanwhile; Stop any time.";
+    aiFmtDur(guess) + " if OpenMHz doesn't throttle, longer if it does." +
+    (skipped ? " Skipping " + skipped.toLocaleString() + " under " + aiCfg.minLen + "s." : "") +
+    " The scanner keeps working meanwhile; Stop any time.";
   await aiRunIndex(todo, "Transcribing " + todo.length.toLocaleString() + " calls");
 }
 
@@ -1927,7 +1946,7 @@ const aiLiveQ = [];
 let aiLivePumping = false;
 function aiQueueLive(list){
   if (!aiCfg.live || !proxied("https://x.openmhz.com/x")) return;
-  for (const c of list) if (!TX.has(c._id) && enabled.has(c.talkgroupNum)) aiLiveQ.push(c);
+  for (const c of list) if (!TX.has(c._id) && enabled.has(c.talkgroupNum) && (c.len || 0) >= aiCfg.minLen) aiLiveQ.push(c);
   aiPumpLive();
 }
 async function aiPumpLive(){
@@ -2064,6 +2083,7 @@ $("aiModel").addEventListener("change", () => {
   asrState.ready = false;                       // next transcribe reloads with the new weights
   $("aiEngine").textContent = "Model will load on the next transcribe.";
 });
+$("aiMinLen").addEventListener("change", e => { aiCfg.minLen = Number(e.target.value) || 0; aiPersist(); });
 $("aiLive").addEventListener("change", e => {
   aiCfg.live = e.target.checked; aiPersist();
   if (aiCfg.live) aiPumpLive();
@@ -2113,6 +2133,7 @@ document.addEventListener("keydown", e => {
 /* ---------- boot ---------- */
 $("aiProxy").value = aiCfg.proxy;
 $("aiModel").value = aiCfg.model;
+$("aiMinLen").value = String(aiCfg.minLen);
 $("aiLive").checked = aiCfg.live;
 $("aiShowRows").checked = aiCfg.showRows;
 $("aiEngine").textContent = navigator.gpu ? "WebGPU available." : "No WebGPU here — transcription will use WASM and be slower.";
