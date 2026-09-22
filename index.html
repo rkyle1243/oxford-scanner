@@ -1434,7 +1434,11 @@ const TX_JUNK = /^(?:\s*[\[(][^\])]*[\])]\s*|\s*(?:thank you(?: for watching)?|t
 function cleanTranscript(t){
   let s = String(t || "").replace(/\s+/g, " ").trim();
   s = s.replace(/\s*[\[(](?:music|laughter|applause|silence|beep\w*|phone\s*\w*|inaudible|blank_audio|noise|静音)[^\])]*[\])]\s*/gi, " ").trim();
-  if (!s || TX_JUNK.test(s)) return "";
+  s = s.replace(/^[>\s]+/, "").trim();          // ">>" speaker markers, a subtitle habit
+  // Whatever is left has to contain an actual word or number. A 19-second call
+  // of unintelligible traffic came back as ">>", which is not speech and would
+  // sit under that call in the log pretending to be a transcript.
+  if (!s || !/[a-z0-9]/i.test(s) || TX_JUNK.test(s)) return "";
   return s;
 }
 
