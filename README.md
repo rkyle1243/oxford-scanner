@@ -79,8 +79,9 @@ Findings from probing the live API, recorded here because they constrain the des
 
 - `GET https://api.openmhz.com/oxfmswin/calls` is **CORS-open to any origin**, including the opaque
   `null` origin a `file://` page gets. This is what makes the app work as a local file.
-- `GET https://api.openmhz.com/oxfmswin/talkgroups` is **not** CORS-open to third-party origins.
-  The talkgroup roster is therefore baked into the page. It changes rarely, but it can go stale.
+- `GET https://api.openmhz.com/oxfmswin/talkgroups` was **not** CORS-open when this was written,
+  so the roster is baked into the page. It is readable now (see below), but the API omits the
+  short `alphaTag` names, so the baked-in copy still earns its place.
 - `/calls` returns only the **latest 50 calls**, and `time`/`direction` query parameters on it do
   nothing. History lives at a different path: `GET /oxfmswin/calls/older?time=<epoch_ms>` returns the
   50 calls immediately before that moment, and `/calls/newer?time=<epoch_ms>` walks the other way.
@@ -93,11 +94,18 @@ Findings from probing the live API, recorded here because they constrain the des
   challenge `curl` at all, which is what makes a plain server-side proxy viable.
 - The media host sends **no CORS header**. Audio therefore plays but cannot be read by script,
   which is the entire reason `proxy/` exists.
-- The media host **rate-limits bursts**: roughly thirty rapid requests starts returning `429`,
-  and it stays unhappy for a cooldown afterwards even once you stop. Measured from the page,
-  a steady ~400 ms cadence sustains fine. The indexer paces itself, widens the gap when it is
-  pushed back, and stands down entirely after repeated refusals rather than grinding. Retrying
-  harder makes it strictly worse.
+- The media host **rate-limits on request rate, not on volume**. Measured through a deployed
+  Worker: sequential requests at a 250 ms gap or slower held at **100% success** over every
+  pace tried, while two unpaced workers (~16 req/s) lost **half** of 40 requests to `429`, and
+  six lost 40%. So the ceiling is somewhere around 4–5 requests/second and what matters is
+  spacing them, not how many you eventually fetch. Once tripped it stays unhappy for a cooldown
+  even after you stop. The indexer paces itself, widens the gap when pushed back, and stands
+  down entirely after repeated refusals rather than grinding. Retrying harder makes it strictly
+  worse.
+- `GET /oxfmswin/talkgroups` **is** CORS-readable from a third-party origin now, contrary to
+  what this file said before — verified returning all 35 talkgroups to the GitHub Pages origin.
+  The roster is still baked into the page, because the API's `alphaTag` field comes back `null`
+  and the short names in the log come from there, not from `description`.
 
 ## Why this isn't a Claude Artifact
 

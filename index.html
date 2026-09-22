@@ -1237,7 +1237,7 @@ function proxied(url){
    through one shared pacer that widens the gap when it gets pushed back and
    narrows it again while things are going well. This is the difference
    between indexing an hour of traffic and indexing half of it. */
-const aiPace = { gap:380, next:0, min:200, max:3000, throttled:0, streak:0, coolUntil:0 };
+const aiPace = { gap:380, next:0, min:250, max:3000, throttled:0, streak:0, coolUntil:0, reason:"" };
 function paceWait(){
   const now = Date.now();
   const at = Math.max(now, aiPace.next, aiPace.coolUntil);
@@ -1257,8 +1257,9 @@ function paceWait(){
   })();
 }
 function paceGood(){ aiPace.streak = 0; aiPace.gap = Math.max(aiPace.min, aiPace.gap * 0.85); }
-function paceBackOff(retryAfterMs){
+function paceBackOff(retryAfterMs, reason){
   aiPace.throttled++; aiPace.streak++;
+  if (reason) aiPace.reason = reason;
   aiPace.gap = Math.min(aiPace.max, Math.max(aiPace.gap * 1.6, 600));
   let until = Date.now() + (retryAfterMs || aiPace.gap);
   // Once it has refused three in a row a cooldown is in force, and no gap
@@ -1278,7 +1279,7 @@ async function fetchAudioBytes(url, attempts){
     await paceWait();
     let r;
     try { r = await fetch(via, { cache: "force-cache" }); }
-    catch (e) { last = new Error("network error reaching the proxy"); paceBackOff(); continue; }
+    catch (e) { last = new Error("network error reaching the proxy"); paceBackOff(0, "network"); continue; }
     if (r.ok) {
       const bytes = await r.arrayBuffer();
       if (bytes.byteLength < 256) throw new Error("empty audio file");
@@ -1288,7 +1289,8 @@ async function fetchAudioBytes(url, attempts){
     last = new Error("HTTP " + r.status + (r.status === 429 ? " (rate limited)" : ""));
     if (!RETRYABLE.has(r.status)) throw last;      // 403/404 will not improve on a retry
     const ra = Number(r.headers.get("Retry-After"));
-    paceBackOff(isFinite(ra) && ra > 0 ? Math.min(ra * 1000, 30000) : 0);
+    paceBackOff(isFinite(ra) && ra > 0 ? Math.min(ra * 1000, 30000) : 0,
+                r.status === 429 ? "rate" : "upstream");
   }
   throw last || new Error("could not fetch audio");
 }
@@ -1752,13 +1754,19 @@ function aiRenderJob(){
   $("aiJobBar").style.width = aiJob.total ? Math.round((aiJob.done / aiJob.total) * 100) + "%" : "0%";
   const left = aiJob.total && aiJob.rate ? (aiJob.total - aiJob.done) * aiJob.rate : 0;
   if (!aiJob.rate) { $("aiJobRate").textContent = "Starting\u2026"; return; }
+  // Only name rate limiting when it really was a 429. Backing off also happens
+  // on 5xx and on network trouble, and naming the wrong cause sends you off
+  // looking in the wrong place.
+  const why = aiPace.reason === "network" ? "Trouble reaching the proxy"
+            : aiPace.reason === "upstream" ? "OpenMHz is returning errors"
+            : "OpenMHz is rate-limiting";
   const cooling = aiPace.coolUntil - Date.now();
   if (cooling > 1500) {
-    $("aiJobRate").textContent = "OpenMHz is rate-limiting \u00b7 waiting " + Math.ceil(cooling / 1000) + "s before trying again";
+    $("aiJobRate").textContent = why + " \u00b7 waiting " + Math.ceil(cooling / 1000) + "s before trying again";
     return;
   }
   const bits = [(aiJob.rate / 1000).toFixed(1) + "s per call", "about " + aiFmtDur(left) + " left"];
-  if (aiPace.throttled) bits.push("pacing around OpenMHz rate limits");
+  if (aiPace.throttled) bits.push("pacing to stay under OpenMHz's limit");
   if (aiJob.fail) bits.push(aiJob.fail + " to retry");
   $("aiJobRate").textContent = bits.join(" \u00b7 ");
 }
@@ -1780,7 +1788,7 @@ async function aiRunIndex(list, label){
   if (aiJob.running) return;
   Object.assign(aiJob, { running:true, cancel:false, done:0, total:list.length, ok:0, fail:0, failedLeft:0,
                        stopReason:null, lastErr:null, started:Date.now(), rate:0, label });
-  aiPace.throttled = 0; aiPace.streak = 0; aiPace.coolUntil = 0;
+  aiPace.throttled = 0; aiPace.streak = 0; aiPace.coolUntil = 0; aiPace.reason = "";
   aiRenderJob();
   const ticker = setInterval(() => { if (aiJob.running) aiRenderJob(); }, 1000);
 
