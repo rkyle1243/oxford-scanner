@@ -325,6 +325,10 @@ textarea.ai-q{resize:vertical;line-height:1.5;font-family:"IBM Plex Mono",monosp
 .pl-who{min-width:0}
 .pl-tg{display:block;font-size:14px;font-weight:600;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pl-who .tg-desc,.pl-who .tg-tx{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl-opt{display:flex;gap:16px;align-items:center;margin-top:10px;flex-wrap:wrap;font-size:12.5px}
+.pl-opt .ai-sel{padding:4px 5px;font-size:12px}
+.pl-dim{color:var(--ink-dim);font-size:11.5px}
+.pl-skip{color:var(--signal);font-size:11px;flex:none}
 .pl-right{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--ink-dim);flex-wrap:nowrap;white-space:nowrap}
 .pl-right .mini{font-size:10px;letter-spacing:.06em;padding:3px 6px;border:1px solid var(--line);border-radius:2px}
 .pl-right .mini:hover{color:var(--signal);border-color:var(--signal-dim)}
@@ -920,12 +924,25 @@ function exitArchive(){
 /* ---------- playback ---------- */
 function callById(id){ return calls.find(c => c._id === id); }
 
+let pendingSeek = 0;
+// currentTime cannot be set before the browser knows the duration, so the
+// jump is queued here and applied the moment metadata lands.
+audio.addEventListener("loadedmetadata", () => {
+  if (pendingSeek > 0 && isFinite(audio.duration) && audio.duration > pendingSeek + 0.3) {
+    try { audio.currentTime = pendingSeek; } catch {}
+  }
+  pendingSeek = 0;
+});
+
 function play(c, fromQueue){
   if (!c) return;
   current = c;
   played.add(c._id);
   if (!fromQueue) queue = queue.filter(id => id !== c._id);
+  const skip = aiCfg.skipTones ? (TONE.get(c._id) || 0) : 0;
+  pendingSeek = skip > 0.5 ? skip : 0;
   audio.src = c.url;
+  audio.playbackRate = aiCfg.rate || 1;
   setSessionMeta(c);
   audio.play().catch(() => { /* blocked until a click; row click always provides one */ });
   renderNowPlaying();
@@ -1264,7 +1281,9 @@ const aiCfg = (() => {
     model:    AI_MODELS[s.model] ? s.model : "base",
     live:     !!s.live,
     showRows: s.showRows !== false,
-    minLen:   typeof s.minLen === "number" ? s.minLen : 2
+    minLen:   typeof s.minLen === "number" ? s.minLen : 2,
+    skipTones: s.skipTones !== false,
+    rate:     typeof s.rate === "number" ? s.rate : 1
   };
 })();
 function aiPersist(){ try { localStorage.setItem(AI_LS, JSON.stringify(aiCfg)); } catch {} }
@@ -1282,13 +1301,14 @@ let txDB = null;
 function openTxDB(){
   if (txDB) return txDB;
   txDB = new Promise((resolve, reject) => {
-    const rq = indexedDB.open("oxfmswin-ai", 1);
+    const rq = indexedDB.open("oxfmswin-ai", 2);
     rq.onupgradeneeded = () => {
       const db = rq.result;
       if (!db.objectStoreNames.contains("tx")) {
         const st = db.createObjectStore("tx", { keyPath: "_id" });
         st.createIndex("at", "at");
       }
+      if (!db.objectStoreNames.contains("tones")) db.createObjectStore("tones", { keyPath: "_id" });
     };
     rq.onsuccess = () => resolve(rq.result);
     rq.onerror   = () => reject(rq.error);
@@ -2431,6 +2451,7 @@ function aiPlaylistPlay(i){
   }
   aiPL.idx = i; aiPL.active = true;
   play(aiPL.items[i], false);
+  aiTonePrefetch(i);            // this one if it is not known yet, plus the next two
   aiRenderPlaylist();
   const row = document.querySelector(".pl-item.playing");
   if (row) row.scrollIntoView({ block: "nearest" });
@@ -2443,6 +2464,8 @@ function aiRenderPlaylist(){
   if (!aiPL.items.length) { box.innerHTML = '<div class="empty">Nothing to play.</div>'; return; }
 
   const done = Math.min(aiPL.idx + 1, aiPL.items.length);
+  let toneKnown = 0;
+  for (const c of aiPL.items) if ((TONE.get(c._id) || 0) > 0.5) toneKnown++;
   const totalSec = aiPL.items.reduce((a, c) => a + (c.len || 0), 0);
   const leftSec = aiPL.items.slice(Math.max(0, aiPL.idx + 1)).reduce((a, c) => a + (c.len || 0), 0);
 
@@ -2457,6 +2480,15 @@ function aiRenderPlaylist(){
       '<button class="btn" id="plPlay">' + (aiPL.active && current ? "Pause" : aiPL.idx < 0 ? "Play all" : "Resume") + "</button>" +
       '<button class="btn ghost" id="plNext">Next &#9654;</button>' +
       '<button class="btn ghost" id="plStop">Stop</button>' +
+    "</div>" +
+    '<div class="pl-opt">' +
+      '<label class="ai-chk"><input type="checkbox" id="plTones"' + (aiCfg.skipTones ? " checked" : "") + "> Skip tone-outs" +
+        (toneKnown ? ' <span class="pl-dim">' + toneKnown + " found</span>" : "") + "</label>" +
+      '<span class="ai-chk">Speed' +
+        '<select class="ai-sel" id="plRate">' +
+          [1, 1.25, 1.5, 1.75, 2, 2.5].map(r =>
+            '<option value="' + r + '"' + (Math.abs((aiCfg.rate || 1) - r) < 0.01 ? " selected" : "") + ">" + r + "\u00d7</option>").join("") +
+        "</select></span>" +
     "</div></div>";
 
   let lastDay = null;
@@ -2465,6 +2497,7 @@ function aiRenderPlaylist(){
     const [alpha, desc] = TG[c.talkgroupNum] || ["Talkgroup " + c.talkgroupNum, ""];
     const isCur = i === aiPL.idx;
     const tx = TX.get(c._id);
+    const skip = aiCfg.skipTones ? (TONE.get(c._id) || 0) : 0;
     let div = "";
     const dk = dayKey(c.at);
     if (dk !== lastDay) { div = '<div class="day-div">' + dayLabel(c.at) + "</div>"; lastDay = dk; }
@@ -2479,6 +2512,7 @@ function aiRenderPlaylist(){
       '<span class="pl-right">' +
         (c.emergency ? '<span class="chip">Emerg</span>' : "") +
         (isCur ? '<span class="eq"><i></i><i></i><i></i></span>' : "") +
+        (skip > 0.5 ? '<span class="pl-skip mono" title="Tone-out detected; playback starts after it">&#9193; ' + Math.round(skip) + "s</span>" : "") +
         '<span class="mono">' + mmss(c.len) + "</span>" +
         '<button class="mini" data-around="' + c.at + '" title="Everything on every talkgroup around this moment">&#8599; all</button>' +
       "</span></div>";
@@ -2542,6 +2576,140 @@ async function aiPlayAround(centerMs, padMin){
     tgs.size + " talkgroup" + (tgs.size === 1 ? "" : "s"), centerMs);
   const start = items.findIndex(c => c.at >= centerMs - 30000);
   aiPlaylistPlay(start < 0 ? 0 : start);
+}
+
+/* ---------- skipping the tones ----------
+   A fire tone-out opens with Quick Call II: two pure tones, sometimes six or
+   seven seconds of them, before anybody says a word. Listening through a
+   stack of those is miserable.
+
+   A pure tone is trivially distinguishable from speech once you look at the
+   spectrum. Nearly all of a tone's energy sits in one narrow band, so the
+   share held by the peak bin and its neighbours runs at ~1.0; speech spreads
+   itself out and never sustains above ~0.6. Measured on real tone-outs from
+   this system: six solid seconds at conc 1.00, a steady 656 Hz then 438 Hz,
+   then it falls off a cliff the moment dispatch keys up.
+
+   This needs the audio bytes, so it only works with the proxy configured --
+   the same one transcription uses. Analysis itself is ~30 ms per call and
+   runs on the calls queued *ahead* of the one playing, so it never stalls
+   playback. Results are cached, so a call is only ever analysed once. */
+
+function aiFFT(re, im){
+  const n = re.length;
+  for (let i=1, j=0; i<n; i++){
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j){ let t=re[i]; re[i]=re[j]; re[j]=t; t=im[i]; im[i]=im[j]; im[j]=t; }
+  }
+  for (let len=2; len<=n; len<<=1){
+    const ang = -2*Math.PI/len, wr=Math.cos(ang), wi=Math.sin(ang);
+    for (let i=0; i<n; i+=len){
+      let cr=1, ci=0;
+      for (let k=0; k<len/2; k++){
+        const ur=re[i+k], ui=im[i+k];
+        const vr=re[i+k+len/2]*cr - im[i+k+len/2]*ci;
+        const vi=re[i+k+len/2]*ci + im[i+k+len/2]*cr;
+        re[i+k]=ur+vr; im[i+k]=ui+vi;
+        re[i+k+len/2]=ur-vr; im[i+k+len/2]=ui-vi;
+        const ncr=cr*wr - ci*wi; ci=cr*wi + ci*wr; cr=ncr;
+      }
+    }
+  }
+}
+
+function aiDetectToneEnd(pcm, sr){
+  const N=512, HOP=160;                    // 32 ms window, 10 ms hop
+  const win = new Float32Array(N);
+  for (let i=0;i<N;i++) win[i] = 0.5 - 0.5*Math.cos(2*Math.PI*i/(N-1));
+  const frames = [];
+  for (let s=0; s+N<=pcm.length; s+=HOP){
+    const re=new Float32Array(N), im=new Float32Array(N);
+    let rms=0;
+    for (let i=0;i<N;i++){ const v=pcm[s+i]; rms+=v*v; re[i]=v*win[i]; }
+    rms = Math.sqrt(rms/N);
+    aiFFT(re, im);
+    const bins=N/2, mag=new Float32Array(bins);
+    let tot=0, peak=0, pk=0;
+    for (let k=1;k<bins;k++){ const m=re[k]*re[k]+im[k]*im[k]; mag[k]=m; tot+=m; if(m>peak){peak=m;pk=k;} }
+    let near=0;
+    for (let k=Math.max(1,pk-2); k<=Math.min(bins-1,pk+2); k++) near+=mag[k];
+    frames.push({ rms, conc: tot>0 ? near/tot : 0 });
+  }
+
+  const isTone = f => f.conc > 0.85 && f.rms > 0.02;
+  const fps = sr/HOP;
+
+  // Tones rarely start at zero -- there is usually dead air first -- so find
+  // where they start before walking to where they end.
+  const SEARCH = Math.min(frames.length, Math.round(4*fps));
+  let f0 = -1;
+  for (let i=0;i<SEARCH;i++) if (isTone(frames[i])) { f0 = i; break; }
+  if (f0 < 0) return 0;
+
+  const AHEAD = Math.round(0.45*fps);      // the gap between the A and B tones
+  let i = f0, toneFrames = 0;
+  while (i < frames.length){
+    let ahead = false;
+    for (let k=i; k<Math.min(frames.length, i+AHEAD); k++) if (isTone(frames[k])) { ahead = true; break; }
+    if (!ahead) break;
+    if (isTone(frames[i])) toneFrames++;
+    i++;
+  }
+
+  const dur = pcm.length/sr, toneSec = toneFrames/fps, endSec = i/fps;
+  if (toneSec < 1.2) return 0;             // a brief beep is not a tone-out
+  if (endSec > dur*0.7) return 0;          // refuse to skip nearly the whole call
+  return Math.max(0, endSec - 0.15);       // a little lead-in so nothing clips
+}
+
+/* ---------- cache ---------- */
+const TONE = new Map();                    // call id -> seconds to skip
+
+async function toneAll(){
+  const db = await openTxDB();
+  if (!db.objectStoreNames.contains("tones")) return [];
+  return new Promise((res, rej) => {
+    const rq = db.transaction("tones").objectStore("tones").getAll();
+    rq.onsuccess = () => res(rq.result || []);
+    rq.onerror   = () => rej(rq.error);
+  });
+}
+async function tonePut(rec){
+  TONE.set(rec._id, rec.skip);
+  const db = await openTxDB();
+  if (!db.objectStoreNames.contains("tones")) return;
+  return new Promise((res, rej) => {
+    const t = db.transaction("tones", "readwrite");
+    t.objectStore("tones").put(rec);
+    t.oncomplete = res; t.onerror = () => rej(t.error);
+  });
+}
+
+const aiToneBusy = new Set();
+async function aiToneScan(call){
+  if (!call || TONE.has(call._id) || aiToneBusy.has(call._id)) return;
+  if (!proxied("https://media2.openmhz.com/x.m4a")) return;
+  if ((call.len || 0) < 8) return;         // short calls are never toned out
+  aiToneBusy.add(call._id);
+  try {
+    const pcm = await fetchPcm(call.url);
+    const skip = aiDetectToneEnd(pcm, 16000);
+    await tonePut({ _id: call._id, skip, at: call.at || 0 });
+    // If it is the call playing right now and we have not passed the tones
+    // yet, jump anyway rather than making you sit through the rest of them.
+    if (aiCfg.skipTones && skip > 0.5 && current && current._id === call._id && audio.currentTime < skip - 0.3) {
+      try { audio.currentTime = skip; } catch {}
+    }
+    if (aiPL.items.length) aiRenderPlaylist();
+  } catch {} finally { aiToneBusy.delete(call._id); }
+}
+
+// Analyse what is coming up, not what is playing, so the wait is hidden.
+function aiTonePrefetch(fromIdx){
+  if (!aiCfg.skipTones) return;
+  for (let k = fromIdx; k < Math.min(fromIdx + 3, aiPL.items.length); k++) aiToneScan(aiPL.items[k]);
 }
 
 /* ---------- events ---------- */
@@ -2623,6 +2791,17 @@ $("aiResults").addEventListener("keydown", e => {
   if (e.key !== "Enter" && e.key !== " ") return;
   const item = e.target.closest(".pl-item");
   if (item) { e.preventDefault(); aiPlaylistPlay(Number(item.dataset.pl)); }
+});
+$("aiResults").addEventListener("change", e => {
+  if (e.target.id === "plRate") {
+    aiCfg.rate = Number(e.target.value) || 1; aiPersist();
+    audio.playbackRate = aiCfg.rate;
+    aiRenderPlaylist();
+  } else if (e.target.id === "plTones") {
+    aiCfg.skipTones = e.target.checked; aiPersist();
+    if (aiCfg.skipTones) aiTonePrefetch(Math.max(0, aiPL.idx));
+    aiRenderPlaylist();
+  }
 });
 // keep the transport label and the playlist in step with the player
 audio.addEventListener("play",  () => { if (aiPL.items.length) aiRenderPlaylist(); });
@@ -2723,6 +2902,7 @@ $("aiLive").checked = aiCfg.live;
 $("aiShowRows").checked = aiCfg.showRows;
 $("aiEngine").textContent = navigator.gpu ? "WebGPU available." : "No WebGPU here — transcription will use WASM and be slower.";
 
+toneAll().then(rows => { for (const r of rows) TONE.set(r._id, r.skip); }).catch(() => {});
 txAll().then(rows => {
   for (const r of rows) TX.set(r._id, r);
   aiRenderIndexStat();

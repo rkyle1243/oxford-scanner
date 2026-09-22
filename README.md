@@ -86,6 +86,28 @@ into 39 transmissions across four agencies.
 
 Use **Transcribe instead** only when you want to search the words rather than listen.
 
+### Skipping the tones, and playing faster
+
+A fire tone-out opens with Quick Call II — two pure tones, sometimes six or seven seconds of them,
+before anybody says a word. **Skip tone-outs** starts playback after them.
+
+A pure tone is easy to tell from speech once you look at the spectrum: nearly all of a tone's
+energy sits in one narrow band, so the share held by the peak bin and its neighbours runs at
+~1.0, while speech spreads out and never sustains above ~0.6. Measured on real tone-outs here:
+six solid seconds at `conc 1.00`, a steady 656 Hz then 438 Hz, falling off a cliff the moment
+dispatch keys up. Detection is a 512-point FFT per 10 ms hop, ~30 ms for a whole call.
+
+Checked against Whisper on both sides of the cut: what gets skipped transcribes as nothing, and
+what is kept begins at *"Attention County Fire, Attention County Fire…"*. Guard rails — at least
+1.2 s of tone before it will fire at all, never skipping past 70% of a call, and a 0.15 s
+lead-in so nothing clips.
+
+This one does need the proxy, since it has to read the samples. Analysis runs on the calls
+queued *ahead* of the one playing, so the wait is hidden, and every result is cached, so a call
+is only analysed once. Without a proxy the checkbox simply does nothing.
+
+**Speed** runs 1×–2.5× with pitch correction, and is remembered.
+
 ### Finding a call you already know something about
 
 **Around known times** takes a list of calls you already have — off a dispatch app, a run sheet,
