@@ -135,6 +135,18 @@ input[type=range]{flex:1;accent-color:var(--signal);height:18px}
 footer{max-width:1280px;margin:0 auto;padding:6px 20px 28px;font-size:12px;color:var(--ink-dim);line-height:1.6}
 footer a{color:var(--ink-mid)}
 
+/* archive / history controls */
+.log-hd{flex-wrap:wrap}
+.log-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#jumpTime{background:var(--panel-2);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius);
+  font-family:inherit;font-size:12px;padding:3px 5px;color-scheme:dark}
+.log-ft{padding:10px 14px;border-top:1px solid var(--line-soft)}
+.loadmore{width:100%;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-2);
+  color:var(--ink-mid);padding:9px 0;font-size:12.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+.loadmore:hover:not(:disabled){color:var(--ink);border-color:#38434f}
+.loadmore:disabled{opacity:.45;cursor:default}
+@media (max-width:560px){ .log-ft{padding:10px 12px} .loadmore{padding:12px 0} }
+
 /* alert tones */
 .tone-row{display:flex;align-items:center;gap:9px;padding:7px 14px;border-bottom:1px solid var(--line-soft)}
 .tone-row:last-child{border-bottom:none}
@@ -221,10 +233,16 @@ footer a{color:var(--ink-mid)}
 <main>
   <section class="log" aria-label="Live radio traffic">
     <div class="log-hd">
-      <span class="label">Live traffic</span>
-      <span class="label" id="filterNote">All talkgroups</span>
+      <span class="label" id="logTitle">Live traffic</span>
+      <span class="log-tools">
+        <input type="datetime-local" id="jumpTime" aria-label="Jump to a date and time">
+        <button class="mini" id="jumpGo">Go</button>
+        <button class="mini" id="backLive" hidden>&larr; Back to live</button>
+        <span class="label" id="filterNote">All talkgroups</span>
+      </span>
     </div>
     <div id="rows"><div class="empty">Contacting OpenMHz&hellip;</div></div>
+    <div class="log-ft"><button class="loadmore" id="loadOlder">Load earlier traffic</button></div>
   </section>
 
   <aside class="console">
@@ -348,6 +366,9 @@ let scanning = false;
 let failures = 0;
 let sessionCount = 0;
 let firstLoad = true;
+let archiveAt = null;        // ms anchor while browsing the archive; null = live
+let loadingOlder = false;
+let rowCap = 120, callCap = 400;
 
 const saved = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; } })();
 const enabled = new Set(saved.enabled || Object.keys(TG).map(Number));
@@ -432,6 +453,7 @@ function notify(c){
 
 /* ---------- polling ---------- */
 async function poll(){
+  if (archiveAt) { setTimeout(poll, 3000); return; }
   try {
     const r = await fetch(API, { cache: "no-store" });
     if (!r.ok) throw new Error("HTTP " + r.status);
@@ -459,7 +481,7 @@ function ingest(incoming){
   if (!fresh.length) { renderCounts(); return; }
 
   calls.sort((a, b) => b.at - a.at);
-  if (calls.length > 400) calls.length = 400;
+  if (calls.length > callCap) calls.length = callCap;
 
   if (firstLoad) {
     // Don't replay or alert on the backlog that existed before the page opened.
@@ -481,6 +503,80 @@ function ingest(incoming){
 function setStatus(ok, text){
   $("dot").className = "dot " + (ok ? "live" : "err");
   $("statusText").textContent = text;
+}
+
+/* ---------- history ----------
+   OpenMHz exposes older traffic at /calls/older?time=<ms>, 50 calls per request,
+   anchored at that moment and walking backwards. Roughly 30 days are retained.
+   Historical calls are marked played on arrival so they never fire an alert or
+   enter the scan queue -- they are something you go and listen to, not traffic
+   breaking right now. */
+const OLDER_API = "https://api.openmhz.com/oxfmswin/calls/older?time=";
+
+function oldestLoaded(){ return calls.length ? calls[calls.length - 1].at : Date.now(); }
+
+function addHistorical(list){
+  let added = 0;
+  for (const c of list) {
+    if (seen.has(c._id)) continue;
+    seen.add(c._id);
+    c.at = new Date(c.time).getTime();
+    played.add(c._id);
+    calls.push(c);
+    added++;
+  }
+  if (added) { calls.sort((a, b) => b.at - a.at); rowCap += added; callCap += added; }
+  return added;
+}
+
+async function loadOlder(anchor){
+  if (loadingOlder) return;
+  loadingOlder = true;
+  const btn = $("loadOlder");
+  btn.disabled = true;
+  btn.textContent = "Loading\u2026";
+  try {
+    const r = await fetch(OLDER_API + anchor, { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const added = addHistorical((await r.json()).calls || []);
+    render();
+    if (added) { btn.textContent = "Load earlier traffic"; btn.disabled = false; }
+    else { btn.textContent = "Nothing earlier \u2014 OpenMHz keeps about 30 days"; }
+  } catch (e) {
+    btn.textContent = "Couldn't load \u2014 tap to retry";
+    btn.disabled = false;
+  }
+  loadingOlder = false;
+}
+
+function resetLog(){
+  calls.length = 0; seen.clear(); played.clear(); queue = [];
+  rowCap = 120; callCap = 400;
+  current = null; audio.pause();
+  const btn = $("loadOlder");
+  btn.disabled = false; btn.textContent = "Load earlier traffic";
+  renderNowPlaying();
+}
+
+function enterArchive(ms){
+  archiveAt = ms;
+  resetLog();
+  $("logTitle").textContent = "Archive";
+  $("backLive").hidden = false;
+  $("dot").className = "dot";
+  $("statusText").textContent = "Archive \u00b7 " + new Date(ms).toLocaleString();
+  render();
+  loadOlder(ms);
+}
+
+function exitArchive(){
+  archiveAt = null;
+  resetLog();
+  firstLoad = true;
+  $("logTitle").textContent = "Live traffic";
+  $("backLive").hidden = true;
+  setStatus(true, "Reconnecting\u2026");
+  render();
 }
 
 /* ---------- playback ---------- */
@@ -544,7 +640,7 @@ function renderCounts(){
 }
 
 function renderSpark(){
-  const now = Date.now(), buckets = new Array(30).fill(0);
+  const now = archiveAt || Date.now(), buckets = new Array(30).fill(0);
   for (const c of calls) {
     const m = Math.floor((now - c.at) / 60000);
     if (m >= 0 && m < 30) buckets[29 - m]++;
@@ -563,7 +659,7 @@ function render(){
     box.innerHTML = '<div class="empty">' +
       (calls.length ? "No traffic on the talkgroups you have selected." : "No calls yet — the system is quiet.") + "</div>";
   } else {
-    box.innerHTML = list.slice(0, 120).map(c => {
+    box.innerHTML = list.slice(0, rowCap).map(c => {
       const g = groupOf(c.talkgroupNum);
       const [alpha, desc] = TG[c.talkgroupNum] || ["Talkgroup " + c.talkgroupNum, ""];
       const isCur = current && current._id === c._id;
@@ -651,6 +747,15 @@ $("tgBody").addEventListener("click", e => {
   b.setAttribute("aria-pressed", alerts.has(n));
   persist(); renderTones();
 });
+$("loadOlder").addEventListener("click", () => loadOlder(oldestLoaded()));
+$("jumpGo").addEventListener("click", () => {
+  const v = $("jumpTime").value;
+  if (!v) return;
+  const ms = new Date(v).getTime();
+  if (isFinite(ms)) enterArchive(ms);
+});
+$("backLive").addEventListener("click", exitArchive);
+
 $("toneBody").addEventListener("change", e => {
   const n = Number(e.target.dataset.tone); if (!n) return;
   tones[n] = e.target.value;
@@ -733,6 +838,11 @@ function keepAlive(on){
 /* ---------- boot ---------- */
 $("vol").value = volume;
 $("volNum").textContent = volume;
+(() => {   // seed the jump picker with "an hour ago", capped at now
+  const local = t => new Date(t - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  $("jumpTime").value = local(Date.now() - 3600000);
+  $("jumpTime").max = local(Date.now());
+})();
 renderFilter();
 renderTones();
 renderNowPlaying();

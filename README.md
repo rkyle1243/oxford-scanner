@@ -14,6 +14,8 @@ Live page: _(enable GitHub Pages to populate)_
 - **Talkgroup filter** across all 35 groups, grouped by agency. Selections, alerts, and volume persist
   in `localStorage`.
 - **Activity strip** — calls per minute over the last 30 minutes.
+- **Archive** — jump to any date and time within the retention window, or page backwards through
+  earlier traffic 50 calls at a time. Historical calls never fire alerts or enter the scan queue.
 
 No build step, no dependencies, no backend. Open `index.html` directly or serve it anywhere static.
 
@@ -25,9 +27,13 @@ Findings from probing the live API, recorded here because they constrain the des
   `null` origin a `file://` page gets. This is what makes the app work as a local file.
 - `GET https://api.openmhz.com/oxfmswin/talkgroups` is **not** CORS-open to third-party origins.
   The talkgroup roster is therefore baked into the page. It changes rarely, but it can go stale.
-- `/calls` returns only the **latest 50 calls**. The `time` and `direction` query parameters had no
-  observable effect when tested, so there is no history paging — the page accumulates its own
-  history while it runs.
+- `/calls` returns only the **latest 50 calls**, and `time`/`direction` query parameters on it do
+  nothing. History lives at a different path: `GET /oxfmswin/calls/older?time=<epoch_ms>` returns the
+  50 calls immediately before that moment, and `/calls/newer?time=<epoch_ms>` walks the other way.
+  Page backwards by passing the oldest timestamp you already hold. Both are CORS-open like `/calls`.
+- **Retention is roughly 30 days.** A request anchored 30 days back returns calls; 33 days back
+  returns an empty array. Audio for 30-day-old calls still streams, so the archive is genuinely
+  listenable and not just an index.
 - Both the API and the audio host sit behind Cloudflare, which challenges non-browser clients.
   `curl` gets a 403; real browsers pass. Any server-side proxy has to account for this.
 
