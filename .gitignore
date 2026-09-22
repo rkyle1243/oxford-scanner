@@ -2,3 +2,7 @@
 
 # wrangler local state
 proxy/.wrangler/
+
+# EMS dispatch lists — addresses of real calls. Never publish these.
+active-alert-calls.txt
+*-calls.txt
