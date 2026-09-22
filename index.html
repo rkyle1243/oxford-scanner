@@ -135,6 +135,13 @@ input[type=range]{flex:1;accent-color:var(--signal);height:18px}
 footer{max-width:1280px;margin:0 auto;padding:6px 20px 28px;font-size:12px;color:var(--ink-dim);line-height:1.6}
 footer a{color:var(--ink-mid)}
 
+/* date grouping in the log */
+.day-div{padding:9px 14px 8px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  font-weight:700;color:var(--ink-dim);background:var(--panel-2);
+  border-bottom:1px solid var(--line-soft);border-top:1px solid var(--line-soft)}
+.day-div:first-child{border-top:none}
+@media (max-width:560px){ .day-div{padding:9px 12px 8px} }
+
 /* archive / history controls */
 .log-hd{flex-wrap:wrap}
 .log-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -396,9 +403,36 @@ function ago(d){
   const s = Math.max(0, (Date.now() - d) / 1000);
   if (s < 60) return Math.floor(s) + "s ago";
   if (s < 3600) return Math.floor(s/60) + "m ago";
-  return Math.floor(s/3600) + "h ago";
+  if (s < 86400) return Math.floor(s/3600) + "h ago";
+  return Math.floor(s/86400) + "d ago";
 }
 const units = c => [...new Set((c.srcList||[]).map(s => s.src).filter(Boolean))];
+
+/* ---------- date & time display ----------
+   Every row's clock only ever showed HH:MM:SS with no date, and once the
+   archive could hold weeks of history that stopped being enough to tell
+   traffic apart. Calls are now grouped under a date heading (Today /
+   Yesterday / the full date), each row keeps its exact time, and hovering
+   a time always shows the complete, unambiguous stamp. */
+const DOW = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function dayKey(ms){ const d = new Date(ms); return d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate(); }
+function dayLabel(ms){
+  const d = new Date(ms), today = new Date();
+  const yest = new Date(today); yest.setDate(yest.getDate() - 1);
+  const dateStr = DOW[d.getDay()] + ", " + MON[d.getMonth()] + " " + d.getDate() + ", " + d.getFullYear();
+  if (d.toDateString() === today.toDateString()) return "Today · " + dateStr;
+  if (d.toDateString() === yest.toDateString()) return "Yesterday · " + dateStr;
+  return dateStr;
+}
+function exactStamp(ms){
+  const d = new Date(ms);
+  return DOW[d.getDay()] + ", " + MON[d.getMonth()] + " " + d.getDate() + ", " + d.getFullYear() + " · " + clock(d);
+}
+function shortStamp(ms){
+  const d = new Date(ms);
+  return MON[d.getMonth()] + " " + d.getDate() + " · " + clock(d);
+}
 
 /* ---------- alert tones ----------
    Each tone is a short sequence of steps: f = frequency, d = duration,
@@ -631,7 +665,8 @@ function renderNowPlaying(){
   $("npDesc").textContent = desc;
   const u = units(current);
   $("npUnits").textContent = u.length ? "Unit " + u.join(", ") : "";
-  $("npClock").textContent = clock(new Date(current.at));
+  $("npClock").textContent = shortStamp(current.at);
+  $("npClock").title = exactStamp(current.at);
 }
 
 function renderCounts(){
@@ -659,24 +694,30 @@ function render(){
     box.innerHTML = '<div class="empty">' +
       (calls.length ? "No traffic on the talkgroups you have selected." : "No calls yet — the system is quiet.") + "</div>";
   } else {
-    box.innerHTML = list.slice(0, rowCap).map(c => {
+    const shown = list.slice(0, rowCap);
+    let lastDay = null;
+    const parts = [];
+    for (const c of shown) {
+      const dk = dayKey(c.at);
+      if (dk !== lastDay) { parts.push('<div class="day-div">' + dayLabel(c.at) + '</div>'); lastDay = dk; }
       const g = groupOf(c.talkgroupNum);
       const [alpha, desc] = TG[c.talkgroupNum] || ["Talkgroup " + c.talkgroupNum, ""];
       const isCur = current && current._id === c._id;
       const cls = ["row", isCur ? "playing" : "", (!played.has(c._id) && !isCur) ? "new" : "", c.emergency ? "emerg" : ""].join(" ");
       const u = units(c);
-      return '<div class="' + cls + '" data-id="' + c._id + '" role="button" tabindex="0">' +
+      parts.push('<div class="' + cls + '" data-id="' + c._id + '" role="button" tabindex="0">' +
         '<span class="stripe" style="background:' + KIND_COLOR[g.kind] + '"></span>' +
-        '<span class="t mono">' + clock(new Date(c.at)) + '</span>' +
+        '<span class="t mono" title="' + exactStamp(c.at) + '">' + clock(new Date(c.at)) + '</span>' +
         '<span class="who"><span class="tg-name">' + alpha.toUpperCase() + '</span>' +
         '<span class="tg-desc">' + desc + (u.length ? " · unit " + u[0] : "") + '</span></span>' +
         '<span class="right">' +
           (c.emergency ? '<span class="chip">Emerg</span>' : "") +
           (isCur ? '<span class="eq"><i></i><i></i><i></i></span>' : "") +
           '<span class="mono">' + mmss(c.len) + '</span>' +
-          '<span class="mono" style="width:56px;text-align:right">' + ago(c.at) + '</span>' +
-        '</span></div>';
-    }).join("");
+          (archiveAt ? "" : '<span class="mono" style="width:56px;text-align:right">' + ago(c.at) + '</span>') +
+        '</span></div>');
+    }
+    box.innerHTML = parts.join("");
   }
   renderSpark();
   const n = enabled.size, total = Object.keys(TG).length;
