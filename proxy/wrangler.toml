@@ -1,0 +1,5 @@
+# Deploy with:  npx wrangler deploy
+# (from inside the proxy/ directory, after `npx wrangler login`)
+name = "oxfmswin-audio-proxy"
+main = "worker.js"
+compatibility_date = "2025-01-01"

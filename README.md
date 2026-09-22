@@ -18,8 +18,60 @@ Live page: _(enable GitHub Pages to populate)_
   around that moment (50 calls before it, 50 after), then page further in either direction with
   Load earlier traffic / Load later traffic. Historical calls never fire alerts or enter the scan
   queue.
+- **Search by what was said** — transcribes past traffic with a Whisper model running locally in
+  the browser, then searches those transcripts. Forgiving by design: it expands a query through a
+  dispatch vocabulary (a search for *wreck* also finds "10-50", "MVA", "rollover") and tolerates a
+  slip or two per word, because Whisper mangles radio audio. Needs a one-time proxy setup — see
+  below. Transcripts are stored locally and appear inline under each call in the log.
 
-No build step, no dependencies, no backend. Open `index.html` directly or serve it anywhere static.
+No build step and no dependencies. Open `index.html` directly or serve it anywhere static.
+The one exception is transcript search, which needs a small proxy of your own — the next section
+explains why.
+
+## Searching what was said
+
+Press <kbd>/</kbd>, or **Search traffic** in the header.
+
+Transcription runs **in your browser**, on your own GPU, using Whisper via
+[transformers.js](https://huggingface.co/docs/transformers.js) and WebGPU. There is no API key,
+no per-call cost, and no audio sent to a transcription service. The model weights (45–260 MB
+depending on the setting) come from a CDN once and are then cached by the browser; transcripts go
+into IndexedDB and persist across reloads.
+
+Pick a range, press **Transcribe this range**, and the page walks that window of history,
+transcribing each call. Then search it. **Transcribe live traffic** keeps the index growing on its
+own as new calls arrive.
+
+Query syntax, beyond plain words:
+
+| You type | It means |
+|---|---|
+| `wreck` | that word, its variants, and the dispatch phrasings for it |
+| `"fire line"` | that exact phrase, required |
+| `shots -alarm` | matches *shots*, excludes anything saying *alarm* |
+| `tg:53682` or `tg:opd` | only that talkgroup |
+
+**Smart match** does the expansion and fuzzy matching. **Exact words** does neither. **Regex** hands
+your pattern straight to the regex engine.
+
+### Why it needs a proxy
+
+`media*.openmhz.com` will happily play audio to an `<audio>` element but sends no
+`Access-Control-Allow-Origin` header, so the page is not allowed to *read* the bytes — and Web
+Audio treats the element as tainted and hands back silence. Playback works; transcription cannot.
+
+`proxy/worker.js` is a Cloudflare Worker that fetches the same public file server-side and
+re-serves it with that one header. It stores nothing and only talks to openmhz.com. Deploy it
+(`cd proxy && npx wrangler deploy`), paste the URL into **Settings**, press **Test**. Full
+instructions in [proxy/README.md](proxy/README.md).
+
+### How much to trust a transcript
+
+Not very much, word for word. These are short bursts of compressed, noisy, clipped trunked audio
+full of proper nouns, street names, unit numbers and plate readbacks — the worst case for any
+speech model. Expect "10-4" to come out "10 for" and names to be wrong outright. The transcripts
+are good enough to **find** a call; the audio is the record of what was said. Nothing here is an
+official record, and it should not be treated as one.
 
 ## Notes on the OpenMHz API
 
@@ -37,13 +89,22 @@ Findings from probing the live API, recorded here because they constrain the des
   returns an empty array. Audio for 30-day-old calls still streams, so the archive is genuinely
   listenable and not just an index.
 - Both the API and the audio host sit behind Cloudflare, which challenges non-browser clients.
-  `curl` gets a 403; real browsers pass. Any server-side proxy has to account for this.
+  `curl` gets a 403 from `api.openmhz.com`; real browsers pass. The **media** host does not
+  challenge `curl` at all, which is what makes a plain server-side proxy viable.
+- The media host sends **no CORS header**. Audio therefore plays but cannot be read by script,
+  which is the entire reason `proxy/` exists.
+- The media host **rate-limits bursts**: roughly thirty rapid requests starts returning `429`,
+  and it stays unhappy for a cooldown afterwards even once you stop. Measured from the page,
+  a steady ~400 ms cadence sustains fine. The indexer paces itself, widens the gap when it is
+  pushed back, and stands down entirely after repeated refusals rather than grinding. Retrying
+  harder makes it strictly worse.
 
 ## Why this isn't a Claude Artifact
 
 Claude Artifacts run under a Content Security Policy that blocks all outbound `fetch`/XHR and all
 external media. Both the call feed and the `.m4a` audio are cross-origin, so the app cannot function
-in that sandbox. It needs to run as an ordinary web page.
+in that sandbox. It needs to run as an ordinary web page. Transcript search adds a second reason:
+it loads model weights from a CDN and spins up a Worker, neither of which that sandbox allows.
 
 ## Credits
 

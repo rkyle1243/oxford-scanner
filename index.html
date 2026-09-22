@@ -219,6 +219,94 @@ footer a{color:var(--ink-mid)}
   .spark{padding:12px 12px 8px}
   .spark-ax{padding:0 12px 10px}
 }
+
+/* ---------- AI transcript search ----------
+   Transcripts are produced in the browser by a local Whisper model, so the
+   panel has three jobs the rest of the page never had: explain why it needs a
+   proxy, show a long-running job honestly (progress, rate, ETA, cancel), and
+   render results that are mostly text rather than mostly metadata. */
+.col-main{display:flex;flex-direction:column;gap:20px;min-width:0}
+.ai{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.ai-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-bottom:1px solid var(--line-soft)}
+.ai-body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:12px}
+.ai-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ai-q{flex:1 1 260px;min-width:0;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);
+  color:var(--ink);font-family:inherit;font-size:15px;padding:10px 12px}
+.ai-q::placeholder{color:var(--ink-dim)}
+.ai-q:focus{border-color:var(--signal-dim);outline:none}
+.btn{border:1px solid var(--signal-dim);background:transparent;color:var(--signal);padding:10px 18px;border-radius:var(--radius);
+  font-size:12.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;white-space:nowrap}
+.btn:hover:not(:disabled){background:var(--signal);border-color:var(--signal);color:#1b1305}
+.btn:disabled{opacity:.4;cursor:default}
+.btn.ghost{border-color:var(--line);color:var(--ink-mid);background:var(--panel-2);font-weight:600;letter-spacing:.08em;padding:9px 14px}
+.btn.ghost:hover:not(:disabled){color:var(--ink);border-color:#38434f;background:var(--panel-2)}
+.btn.stop{border-color:var(--alert);color:var(--alert)}
+.btn.stop:hover:not(:disabled){background:var(--alert);border-color:var(--alert);color:#fff}
+.ai-sel{background:var(--panel-2);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius);
+  font-family:inherit;font-size:12.5px;padding:7px 6px}
+.ai-chk{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-mid);white-space:nowrap}
+.ai-chk input{accent-color:var(--signal);width:14px;height:14px;margin:0;flex:none}
+.ai-settings{display:flex;flex-direction:column;gap:10px}
+.ai-settings[hidden]{display:none}   /* beats the element's own display, which [hidden] alone does not */
+.ai-note{font-size:12.5px;color:var(--ink-dim);line-height:1.5}
+.ai-note b{color:var(--ink-mid);font-weight:600}
+.ai-note code{font-family:"IBM Plex Mono",monospace;font-size:11.5px;background:var(--panel-2);border:1px solid var(--line);
+  border-radius:2px;padding:1px 4px;color:var(--ink-mid)}
+.ai-warn{border:1px solid var(--signal-dim);border-left-width:3px;border-radius:var(--radius);background:rgba(240,168,72,.05);
+  padding:11px 13px;font-size:13px;color:var(--ink-mid);line-height:1.55}
+.ai-warn h4{margin:0 0 5px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--signal);font-weight:700}
+.ai-warn ol{margin:7px 0 0;padding-left:18px}
+.ai-warn li{margin-bottom:4px}
+.ai-warn a{color:var(--signal)}
+
+/* long-running index job */
+.ai-job{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-2);padding:11px 13px}
+.ai-job-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.ai-job-lbl{font-size:13px;color:var(--ink)}
+.ai-job-num{font-size:12px;color:var(--ink-dim)}
+.ai-prog{height:4px;background:var(--line);border-radius:2px;overflow:hidden}
+.ai-prog > i{display:block;height:100%;width:0;background:var(--signal);transition:width .3s linear}
+.ai-job-ft{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;font-size:12px;color:var(--ink-dim)}
+.ai-live{display:inline-flex;align-items:center;gap:6px}
+.ai-live .dot{width:6px;height:6px}
+
+/* results */
+.ai-results{display:flex;flex-direction:column;border-top:1px solid var(--line-soft)}
+.hit{padding:11px 14px;border-bottom:1px solid var(--line-soft);cursor:pointer;position:relative;display:block;width:100%;text-align:left}
+.hit:last-child{border-bottom:none}
+.hit:hover{background:var(--panel-2)}
+.hit .stripe{width:3px;height:100%;position:absolute;left:0;top:0}
+.hit-top{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:3px}
+.hit-tg{font-size:13.5px;font-weight:600;line-height:1.2}
+.hit-when{font-size:12px;color:var(--ink-dim)}
+.hit-score{margin-left:auto;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);font-weight:600}
+.hit-tx{font-size:14px;color:var(--ink-mid);line-height:1.5}
+.hit-tx mark{background:rgba(240,168,72,.2);color:var(--signal);padding:0 2px;border-radius:2px;font-weight:600}
+.hit.playing{background:#1d252e}
+
+/* transcript line inside the call log + now playing */
+.row .tg-tx{display:block;font-size:12.5px;color:var(--ink-mid);line-height:1.4;margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-style:italic;opacity:.9}
+.np-tx{font-size:13px;color:var(--ink-mid);line-height:1.5;margin-top:9px;padding-top:9px;border-top:1px solid var(--line-soft);font-style:italic}
+.np-tx.pending{color:var(--ink-dim);font-style:normal}
+
+@media (max-width:560px){
+  .ai-body{padding:12px}
+  /* title and index summary each need a full line here; side by side they
+     interleave into an unreadable zigzag */
+  .ai-hd{padding:10px 12px;flex-direction:column;align-items:flex-start;gap:3px}
+  .btn{padding:11px 14px;flex:1 1 auto}
+  .ai-sel{padding:9px 6px;font-size:13px}
+  .hit{padding:11px 12px}
+  .row .tg-tx{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+}
+
+/* header entry point for search */
+.hdr-btn{border:1px solid var(--line);background:var(--panel-2);color:var(--ink-mid);padding:7px 13px;border-radius:var(--radius);
+  font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;white-space:nowrap}
+.hdr-btn:hover{color:var(--ink);border-color:#38434f}
+.hdr-btn[aria-pressed="true"]{color:var(--signal);border-color:var(--signal-dim)}
+@media (max-width:560px){ .hdr-btn{padding:8px 12px} }
 </style>
 </head>
 <body>
@@ -234,10 +322,111 @@ footer a{color:var(--ink-mid)}
       <div class="count"><div class="n mono" id="cNew">0</div><div class="k">Queued</div></div>
       <div class="count"><div class="n mono" id="cSession">0</div><div class="k">This session</div></div>
     </div>
+    <button class="hdr-btn" id="aiToggle" aria-pressed="false" title="Search what was said (press /)">&#8981; Search traffic</button>
   </div>
 </header>
 
 <main>
+  <div class="col-main">
+    <section class="ai" id="aiPanel" aria-label="Search radio traffic" hidden>
+      <div class="ai-hd">
+        <span class="label">Search radio traffic</span>
+        <span class="label mono" id="aiIndexStat">Index empty</span>
+      </div>
+      <div class="ai-body">
+
+        <div class="ai-warn" id="aiSetup" hidden>
+          <h4>One-time setup</h4>
+          Transcribing happens entirely in your browser, but OpenMHz&rsquo;s audio host won&rsquo;t let a web page
+          <em>read</em> its files &mdash; only play them. A tiny proxy of your own fixes that. It stores nothing
+          and only ever fetches from openmhz.com.
+          <ol>
+            <li>Open <a href="https://workers.cloudflare.com/" target="_blank" rel="noopener">Cloudflare Workers</a> and create a Worker (free plan is plenty).</li>
+            <li>Paste in the contents of <code>proxy/worker.js</code> from this repo, then deploy.</li>
+            <li>Paste the Worker URL below.</li>
+          </ol>
+        </div>
+
+        <div class="ai-row">
+          <input type="search" class="ai-q" id="aiQuery" placeholder="Search what was said &mdash; wreck on Jackson Ave, shots fired, structure fire&hellip;"
+                 autocomplete="off" spellcheck="false" aria-label="Search transcribed radio traffic">
+          <button class="btn" id="aiSearch">Search</button>
+        </div>
+
+        <div class="ai-row">
+          <select class="ai-sel" id="aiMode" aria-label="How to match">
+            <option value="smart">Smart match</option>
+            <option value="exact">Exact words</option>
+            <option value="regex">Regex</option>
+          </select>
+          <select class="ai-sel" id="aiWhen" aria-label="Limit results by time">
+            <option value="0">Any time</option>
+            <option value="1">Last hour</option>
+            <option value="6">Last 6 hours</option>
+            <option value="24">Last 24 hours</option>
+            <option value="72">Last 3 days</option>
+            <option value="168">Last 7 days</option>
+          </select>
+          <label class="ai-chk"><input type="checkbox" id="aiScope" checked> Only my talkgroups</label>
+          <label class="ai-chk"><input type="checkbox" id="aiEmerg"> Emergency only</label>
+          <button class="btn ghost" id="aiSettings" aria-expanded="false">Settings</button>
+        </div>
+
+        <div id="aiSettingsBox" class="ai-settings" hidden>
+          <div class="ai-row">
+            <input type="url" class="ai-q" id="aiProxy" placeholder="https://your-worker.workers.dev" aria-label="Audio proxy URL" spellcheck="false">
+            <button class="btn ghost" id="aiTestProxy">Test</button>
+          </div>
+          <div class="ai-row">
+            <select class="ai-sel" id="aiModel" aria-label="Transcription model">
+              <option value="tiny">Fast &middot; tiny.en &middot; ~45 MB</option>
+              <option value="base">Balanced &middot; base.en &middot; ~85 MB</option>
+              <option value="small">Accurate &middot; small.en &middot; ~260 MB</option>
+            </select>
+            <label class="ai-chk"><input type="checkbox" id="aiLive"> Transcribe live traffic</label>
+            <label class="ai-chk"><input type="checkbox" id="aiShowRows" checked> Show transcripts in the log</label>
+          </div>
+          <div class="ai-row">
+            <button class="btn ghost" id="aiExport">Export transcripts</button>
+            <button class="btn ghost" id="aiClear">Clear index</button>
+            <span class="ai-note" id="aiEngine"></span>
+          </div>
+          <div class="ai-note">
+            Transcripts are machine-generated from noisy trunked audio and get words wrong &mdash; names, streets and
+            plate readbacks especially. Treat them as a way to <b>find</b> a call, then listen to it. They are not a record
+            of what was said. Everything stays in this browser; the only things leaving it are model weights from a CDN
+            and audio requests through your own proxy.
+          </div>
+        </div>
+
+        <div class="ai-job" id="aiJob" hidden>
+          <div class="ai-job-top">
+            <span class="ai-job-lbl" id="aiJobLbl">Working&hellip;</span>
+            <span class="ai-job-num mono" id="aiJobNum"></span>
+          </div>
+          <div class="ai-prog"><i id="aiJobBar"></i></div>
+          <div class="ai-job-ft">
+            <span id="aiJobRate"></span>
+            <button class="btn stop" id="aiJobStop" style="padding:5px 12px">Stop</button>
+          </div>
+        </div>
+
+        <div class="ai-row">
+          <select class="ai-sel" id="aiRange" aria-label="Range to transcribe">
+            <option value="1">Last hour</option>
+            <option value="6" selected>Last 6 hours</option>
+            <option value="24">Last 24 hours</option>
+            <option value="72">Last 3 days</option>
+            <option value="168">Last 7 days</option>
+          </select>
+          <button class="btn ghost" id="aiIndex">Transcribe this range</button>
+          <span class="ai-note" id="aiIndexHint">Search only finds calls that have been transcribed.</span>
+        </div>
+
+      </div>
+      <div class="ai-results" id="aiResults"></div>
+    </section>
+
   <section class="log" aria-label="Live radio traffic">
     <div class="log-hd">
       <span class="label" id="logTitle">Live traffic</span>
@@ -254,6 +443,7 @@ footer a{color:var(--ink-mid)}
       <button class="loadmore" id="loadNewer" hidden>Load later traffic</button>
     </div>
   </section>
+  </div>
 
   <aside class="console">
     <div class="card">
@@ -266,6 +456,7 @@ footer a{color:var(--ink-mid)}
           <div class="np-desc" id="npDesc"></div>
           <div class="bar"><i id="npBar"></i></div>
           <div class="np-meta mono"><span id="npPos">0:00</span><span id="npUnits"></span><span id="npLen">0:00</span></div>
+          <div class="np-tx" id="npTx" hidden></div>
         </div>
       </div>
       <div class="transport">
@@ -534,6 +725,7 @@ function ingest(incoming){
       if (scanning) queue.push(c._id); else played.add(c._id);
     }
     if (scanning && !current) playNext();
+    aiQueueLive(fresh);
   }
   render();
 }
@@ -703,6 +895,19 @@ function renderNowPlaying(){
   $("npUnits").textContent = u.length ? "Unit " + u.join(", ") : "";
   $("npClock").textContent = shortStamp(current.at);
   $("npClock").title = exactStamp(current.at);
+  renderNpTranscript();
+}
+
+// The transcript for whatever is playing, or a way to make one on the spot.
+function renderNpTranscript(){
+  const el = $("npTx");
+  if (!el || !current) { if (el) el.hidden = true; return; }
+  const tx = TX.get(current._id);
+  el.hidden = false;
+  if (tx && tx.text) { el.className = "np-tx"; el.textContent = tx.text; }
+  else if (tx) { el.className = "np-tx pending"; el.textContent = "No speech picked up in this call."; }
+  else if (aiCfg.proxy) { el.className = "np-tx pending"; el.innerHTML = '<button class="mini" id="npTxBtn">Transcribe this call</button>'; }
+  else el.hidden = true;
 }
 
 function renderCounts(){
@@ -741,11 +946,13 @@ function render(){
       const isCur = current && current._id === c._id;
       const cls = ["row", isCur ? "playing" : "", (!played.has(c._id) && !isCur) ? "new" : "", c.emergency ? "emerg" : ""].join(" ");
       const u = units(c);
+      const tx = aiCfg.showRows ? TX.get(c._id) : null;
       parts.push('<div class="' + cls + '" data-id="' + c._id + '" role="button" tabindex="0">' +
         '<span class="stripe" style="background:' + KIND_COLOR[g.kind] + '"></span>' +
         '<span class="t mono" title="' + exactStamp(c.at) + '">' + clock(new Date(c.at)) + '</span>' +
         '<span class="who"><span class="tg-name">' + alpha.toUpperCase() + '</span>' +
-        '<span class="tg-desc">' + desc + (u.length ? " · unit " + u[0] : "") + '</span></span>' +
+        '<span class="tg-desc">' + desc + (u.length ? " · unit " + u[0] : "") + '</span>' +
+        (tx && tx.text ? '<span class="tg-tx">' + esc(tx.text) + '</span>' : "") + '</span>' +
         '<span class="right">' +
           (c.emergency ? '<span class="chip">Emerg</span>' : "") +
           (isCur ? '<span class="eq"><i></i><i></i><i></i></span>' : "") +
@@ -912,6 +1119,989 @@ function keepAlive(on){
     }
   } catch {}
 }
+
+
+/* ======================================================================
+   AI transcript search
+   ----------------------------------------------------------------------
+   Everything below turns the call archive into something you can search by
+   what was *said*, not just when it happened and who said it.
+
+   How it works, and why it works this way:
+
+   * Transcription runs locally, in this browser, with a Whisper model that
+     WebGPU executes on your own graphics hardware. No API key, no per-call
+     cost, no audio leaving the machine for a transcription service.
+   * It needs a proxy anyway, for one narrow reason: media*.openmhz.com
+     serves the .m4a files to an <audio> element but sends no CORS header,
+     so a page can play the audio and still not be allowed to read its bytes
+     (Web Audio treats the element as tainted and hands back silence).
+     proxy/worker.js is a ~20-line Cloudflare Worker that re-serves those
+     same public files with the one header that was missing.
+   * Transcripts live in IndexedDB, so an index survives reloads and only
+     ever has to be built once per call.
+   * Searching is deliberately forgiving. Whisper mangles radio audio --
+     "10-4" comes out "10 for", a street becomes a surname -- so a literal
+     substring search finds far too little. Smart match expands a query
+     through a dispatch vocabulary and tolerates a typo or two per word. */
+
+const AI_LS = "oxfmswin.ai.v1";
+
+const AI_MODELS = {
+  tiny:  { id:"onnx-community/whisper-tiny.en",  label:"tiny.en",  dtype:{encoder_model:"fp32", decoder_model_merged:"q4"} },
+  base:  { id:"onnx-community/whisper-base.en",  label:"base.en",  dtype:{encoder_model:"fp32", decoder_model_merged:"q4"} },
+  small: { id:"onnx-community/whisper-small.en", label:"small.en", dtype:{encoder_model:"fp32", decoder_model_merged:"q4"} }
+};
+const TRANSFORMERS_URL = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5";
+
+const aiCfg = (() => {
+  let s = {};
+  try { s = JSON.parse(localStorage.getItem(AI_LS)) || {}; } catch {}
+  return {
+    proxy:    typeof s.proxy === "string" ? s.proxy : "",
+    model:    AI_MODELS[s.model] ? s.model : "base",
+    live:     !!s.live,
+    showRows: s.showRows !== false
+  };
+})();
+function aiPersist(){ try { localStorage.setItem(AI_LS, JSON.stringify(aiCfg)); } catch {} }
+
+const esc = s => String(s == null ? "" : s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+/* ---------- transcript store ----------
+   One row per call, keyed by the OpenMHz call id. `text` is empty for a call
+   that carried no intelligible speech; the row is still written so the call
+   is never queued for transcription twice. */
+const TX = new Map();          // call id -> record, mirrored in memory for render/search
+let txDB = null;
+
+function openTxDB(){
+  if (txDB) return txDB;
+  txDB = new Promise((resolve, reject) => {
+    const rq = indexedDB.open("oxfmswin-ai", 1);
+    rq.onupgradeneeded = () => {
+      const db = rq.result;
+      if (!db.objectStoreNames.contains("tx")) {
+        const st = db.createObjectStore("tx", { keyPath: "_id" });
+        st.createIndex("at", "at");
+      }
+    };
+    rq.onsuccess = () => resolve(rq.result);
+    rq.onerror   = () => reject(rq.error);
+  });
+  return txDB;
+}
+async function txAll(){
+  const db = await openTxDB();
+  return new Promise((res, rej) => {
+    const rq = db.transaction("tx").objectStore("tx").getAll();
+    rq.onsuccess = () => res(rq.result || []);
+    rq.onerror   = () => rej(rq.error);
+  });
+}
+async function txPut(rec){
+  TX.set(rec._id, rec);
+  const db = await openTxDB();
+  return new Promise((res, rej) => {
+    const t = db.transaction("tx", "readwrite");
+    t.objectStore("tx").put(rec);
+    t.oncomplete = res; t.onerror = () => rej(t.error);
+  });
+}
+async function txClear(){
+  TX.clear();
+  const db = await openTxDB();
+  return new Promise((res, rej) => {
+    const t = db.transaction("tx", "readwrite");
+    t.objectStore("tx").clear();
+    t.oncomplete = res; t.onerror = () => rej(t.error);
+  });
+}
+
+/* ---------- audio: fetch through the proxy, decode to 16 kHz mono ----------
+   Whisper wants 16 kHz mono Float32. An OfflineAudioContext pinned to 16 kHz
+   resamples during decode, so there is no separate resampling step and no
+   audio-hardware context competing with playback. */
+let decodeCtx = null;
+function proxied(url){
+  const p = (aiCfg.proxy || "").trim().replace(/\/+$/, "");
+  if (!p) return null;
+  if (p.includes("{url}")) return p.replace("{url}", encodeURIComponent(url));
+  return p + (p.includes("?") ? "&" : "/?") + "u=" + encodeURIComponent(url);
+}
+/* OpenMHz's media host rate-limits hard: fire requests at it as fast as they
+   will go and it starts answering 429, then sulks for a while even after you
+   stop. Measured from this page, a burst of 30 gets most of the way rejected
+   while a steady ~400 ms cadence sails through. So every audio request goes
+   through one shared pacer that widens the gap when it gets pushed back and
+   narrows it again while things are going well. This is the difference
+   between indexing an hour of traffic and indexing half of it. */
+const aiPace = { gap:380, next:0, min:200, max:3000, throttled:0, streak:0, coolUntil:0 };
+function paceWait(){
+  const now = Date.now();
+  const at = Math.max(now, aiPace.next, aiPace.coolUntil);
+  aiPace.next = at + aiPace.gap;
+  let ms = at - now;
+  if (ms <= 0) return Promise.resolve();
+  // Sleep in slices rather than one long timer: a cooldown can be a minute and
+  // a half, and Stop has to be felt when it is pressed, not when the wait
+  // happens to end.
+  return (async () => {
+    while (ms > 0) {
+      if (aiJob.cancel) throw new Error("stopped");
+      const slice = Math.min(ms, 400);
+      await new Promise(r => setTimeout(r, slice));
+      ms -= slice;
+    }
+  })();
+}
+function paceGood(){ aiPace.streak = 0; aiPace.gap = Math.max(aiPace.min, aiPace.gap * 0.85); }
+function paceBackOff(retryAfterMs){
+  aiPace.throttled++; aiPace.streak++;
+  aiPace.gap = Math.min(aiPace.max, Math.max(aiPace.gap * 1.6, 600));
+  let until = Date.now() + (retryAfterMs || aiPace.gap);
+  // Once it has refused three in a row a cooldown is in force, and no gap
+  // short of waiting will get through it. Widening forever just turns the job
+  // into a crawl that still fails, so stand down properly and come back.
+  if (aiPace.streak >= 3) until = Math.max(until, Date.now() + Math.min(90000, 20000 * (aiPace.streak - 2)));
+  aiPace.coolUntil = Math.max(aiPace.coolUntil, until);
+  aiPace.next = Math.max(aiPace.next, until);
+}
+const RETRYABLE = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+async function fetchAudioBytes(url, attempts){
+  const via = proxied(url);
+  if (!via) throw new Error("No audio proxy configured");
+  let last = null;
+  for (let a = 0; a < (attempts || 4); a++) {
+    await paceWait();
+    let r;
+    try { r = await fetch(via, { cache: "force-cache" }); }
+    catch (e) { last = new Error("network error reaching the proxy"); paceBackOff(); continue; }
+    if (r.ok) {
+      const bytes = await r.arrayBuffer();
+      if (bytes.byteLength < 256) throw new Error("empty audio file");
+      paceGood();
+      return bytes;
+    }
+    last = new Error("HTTP " + r.status + (r.status === 429 ? " (rate limited)" : ""));
+    if (!RETRYABLE.has(r.status)) throw last;      // 403/404 will not improve on a retry
+    const ra = Number(r.headers.get("Retry-After"));
+    paceBackOff(isFinite(ra) && ra > 0 ? Math.min(ra * 1000, 30000) : 0);
+  }
+  throw last || new Error("could not fetch audio");
+}
+
+async function fetchPcm(url){
+  const bytes = await fetchAudioBytes(url);
+  decodeCtx = decodeCtx || new OfflineAudioContext(1, 1, 16000);
+  const buf = await decodeCtx.decodeAudioData(bytes);
+  return buf.getChannelData(0);
+}
+
+/* ---------- the model ----------
+   Inference runs in a module Worker built from a Blob, which keeps this page
+   a single file while keeping a multi-second transcribe off the main thread,
+   so the live log keeps updating and audio keeps playing while a long index
+   job grinds away. If a Worker can't be created we fall back to running the
+   same pipeline inline. */
+const ASR_WORKER_SRC = [
+  'import { pipeline, env } from "' + TRANSFORMERS_URL + '";',
+  'let asr = null;',
+  'self.onmessage = async (e) => {',
+  '  const m = e.data;',
+  '  try {',
+  '    if (m.type === "load") {',
+  '      env.allowLocalModels = false;',
+  '      asr = await pipeline("automatic-speech-recognition", m.model, {',
+  '        device: m.device, dtype: m.dtype,',
+  '        progress_callback: d => self.postMessage({ type:"progress", d })',
+  '      });',
+  '      self.postMessage({ type:"ready" });',
+  '    } else if (m.type === "asr") {',
+  '      const out = await asr(m.pcm, { chunk_length_s:30, stride_length_s:5, return_timestamps:false });',
+  '      self.postMessage({ type:"result", id:m.id, text:(out && out.text) || "" });',
+  '    }',
+  '  } catch (err) {',
+  '    self.postMessage({ type:"error", id:m.id, error:String((err && err.message) || err) });',
+  '  }',
+  '};'
+].join("\n");
+
+const asrState = { worker:null, inline:null, ready:false, loading:null, device:null, model:null, jobs:new Map(), nextId:1 };
+
+function asrLoadInWorker(modelId, dtype, device, onProgress){
+  return new Promise((resolve, reject) => {
+    let w;
+    try {
+      w = new Worker(URL.createObjectURL(new Blob([ASR_WORKER_SRC], { type:"text/javascript" })), { type:"module" });
+    } catch (e) { reject(e); return; }
+    let settled = false;
+    w.onmessage = ev => {
+      const m = ev.data;
+      if (m.type === "progress") { onProgress && onProgress(m.d); return; }
+      if (m.type === "ready")    { settled = true; asrState.worker = w; resolve(); return; }
+      if (m.type === "result" || m.type === "error") {
+        const job = asrState.jobs.get(m.id);
+        if (job) {
+          asrState.jobs.delete(m.id);
+          m.type === "result" ? job.resolve(m.text) : job.reject(new Error(m.error));
+        } else if (!settled) { settled = true; reject(new Error(m.error || "worker failed")); }
+      }
+    };
+    w.onerror = e => { if (!settled) { settled = true; try { w.terminate(); } catch {} reject(new Error(e.message || "worker failed to start")); } };
+    w.postMessage({ type:"load", model:modelId, dtype, device });
+    setTimeout(() => { if (!settled) { settled = true; try { w.terminate(); } catch {} reject(new Error("model load timed out")); } }, 300000);
+  });
+}
+
+async function ensureASR(onProgress){
+  if (asrState.ready && asrState.model === aiCfg.model) return;
+  if (asrState.loading) return asrState.loading;
+
+  asrState.loading = (async () => {
+    // Switching models throws away whatever is loaded; they don't share weights.
+    if (asrState.worker) { try { asrState.worker.terminate(); } catch {} asrState.worker = null; }
+    asrState.inline = null; asrState.ready = false;
+
+    const spec = AI_MODELS[aiCfg.model] || AI_MODELS.base;
+    const devices = navigator.gpu ? ["webgpu", "wasm"] : ["wasm"];
+    let lastErr = null;
+
+    for (const device of devices) {
+      try {
+        await asrLoadInWorker(spec.id, spec.dtype, device, onProgress);
+        asrState.device = device + " · worker";
+        asrState.ready = true; asrState.model = aiCfg.model;
+        return;
+      } catch (e) { lastErr = e; }
+      try {
+        // No Worker (or it died): same pipeline, on the main thread.
+        const mod = await import(TRANSFORMERS_URL);
+        mod.env.allowLocalModels = false;
+        asrState.inline = await mod.pipeline("automatic-speech-recognition", spec.id,
+          { device, dtype: spec.dtype, progress_callback: onProgress });
+        asrState.device = device + " · main thread";
+        asrState.ready = true; asrState.model = aiCfg.model;
+        return;
+      } catch (e) { lastErr = e; }
+    }
+    throw lastErr || new Error("Could not load the transcription model");
+  })().finally(() => { asrState.loading = null; });
+
+  return asrState.loading;
+}
+
+// One clip at a time: there is a single GPU session behind this, and queueing
+// work at it in parallel makes everything slower, not faster.
+let asrChain = Promise.resolve();
+function asrRun(pcm){
+  const run = async () => {
+    if (asrState.worker) {
+      const id = asrState.nextId++;
+      return new Promise((resolve, reject) => {
+        asrState.jobs.set(id, { resolve, reject });
+        asrState.worker.postMessage({ type:"asr", id, pcm }, [pcm.buffer]);
+      });
+    }
+    const out = await asrState.inline(pcm, { chunk_length_s:30, stride_length_s:5, return_timestamps:false });
+    return (out && out.text) || "";
+  };
+  const p = asrChain.then(run, run);
+  asrChain = p.then(() => {}, () => {});
+  return p;
+}
+
+async function transcribeCall(c){
+  const pcm = await fetchPcm(c.url);
+  const raw = await asrRun(pcm);
+  const text = cleanTranscript(raw);
+  const rec = {
+    _id: c._id, at: c.at || new Date(c.time).getTime(), tg: c.talkgroupNum,
+    len: c.len || 0, url: c.url, emergency: !!c.emergency,
+    src: (c.srcList || []).map(s => s.src).filter(Boolean)[0] || null,
+    text, model: aiCfg.model, done: Date.now()
+  };
+  await txPut(rec);
+  return rec;
+}
+
+// Whisper fills silence with hallucinated boilerplate -- subtitle credits and
+// bracketed sound effects. On 3-second radio bursts that is most of what a
+// dead-air clip produces, and it would otherwise pollute every search.
+const TX_JUNK = /^(?:\s*[\[(][^\])]*[\])]\s*|\s*(?:thank you(?: for watching)?|thanks for watching|you|bye|subscribe|okay|ok)[.!]?\s*)+$/i;
+function cleanTranscript(t){
+  let s = String(t || "").replace(/\s+/g, " ").trim();
+  s = s.replace(/\s*[\[(](?:music|laughter|applause|silence|beep\w*|phone\s*\w*|inaudible|blank_audio|noise|静音)[^\])]*[\])]\s*/gi, " ").trim();
+  if (!s || TX_JUNK.test(s)) return "";
+  return s;
+}
+
+/* ---------- the dispatch vocabulary ----------
+   What you type and what gets said on the air are rarely the same words.
+   Nobody radios "vehicle collision"; they say wreck, or 10-50, or "signal 4".
+   Each entry is one concept and the ways it actually turns up in traffic --
+   including the shapes Whisper reliably produces, like "10 for" for 10-4.
+   Matching a variant scores lower than matching what you literally typed, so
+   an exact hit still sorts above an inferred one. */
+const AI_LEX = {
+  wreck:    ["wreck","crash","collision","accident","mva","m v a","10-50","ten fifty","signal 4","rollover","roll over","hit and run","fender bender","vehicle accident","car accident","two vehicle","head on","entrapment","extrication"],
+  fire:     ["fire","smoke","flames","working fire","structure fire","house fire","fire alarm","smoke detector","burning","brush fire","grass fire","woods fire","fully involved","smoke showing","alarm sounding"],
+  gun:      ["gun","gunshot","gunshots","shots fired","shooting","firearm","weapon","armed","pistol","handgun","rifle","shotgun","10-32","brandishing"],
+  fight:    ["fight","fighting","altercation","disturbance","assault","brawl","domestic","domestic dispute","10-16","physical","battery"],
+  overdose: ["overdose","od","narcan","naloxone","unresponsive","unconscious","not breathing","possible overdose","fentanyl","respirations"],
+  pursuit:  ["pursuit","chase","fleeing","fled","failure to yield","running from","eluding","10-80","foot pursuit"],
+  theft:    ["theft","stealing","shoplifting","shoplifter","stolen","burglary","larceny","breaking and entering","b and e","10-62","prowler","robbery"],
+  drugs:    ["drugs","narcotics","marijuana","meth","methamphetamine","paraphernalia","possession","k9","canine","odor of"],
+  dui:      ["dui","dwi","drunk","drunk driver","intoxicated","impaired","reckless driver","field sobriety","10-55","open container"],
+  medical:  ["medical","ems","ambulance","cardiac","chest pain","seizure","stroke","bleeding","fall","injury","cpr","difficulty breathing","diabetic","allergic","unconscious","transport","baptist","er","emergency room"],
+  traffic:  ["traffic stop","10-38","tag","license plate","plate","registration","driver's license","drivers license","warrant check","28","27","10-28","10-27","clear and valid","comes back to"],
+  arrest:   ["arrest","in custody","transport","jail","detention","booking","10-15","cuffs","handcuffs","one in custody","signal 30"],
+  backup:   ["backup","back up","expedite","step it up","emergency traffic","officer needs assistance","signal 10","10-33","10-78","start me another","second unit"],
+  missing:  ["missing","runaway","lost","welfare check","check the welfare","10-42","endangered","silver alert","amber alert"],
+  alarm:    ["alarm","alarm call","burglar alarm","panic alarm","audible alarm","alarm company","false alarm"],
+  crowd:    ["crowd","party","noise complaint","loud music","loud party","subjects","gathering","disorderly"],
+  weather:  ["weather","tornado","lightning","flooding","high water","storm","sirens","downed tree","tree down","power line","transformer"],
+  animal:   ["animal","dog","loose dog","livestock","cattle","deer","animal control"],
+  suspicious:["suspicious","suspicious vehicle","suspicious person","loitering","trespassing","10-70","prowling"],
+  traffic_control:["traffic control","road block","lane closed","detour","road closed","directing traffic"],
+  campus:   ["campus","dorm","residence hall","the grove","stadium","vaught","student union","ole miss","university","game day","tailgate"]
+};
+
+// Local geography, so "wreck on Jackson" can prefer calls that also name a
+// street, and so a half-heard place name still lands on the right call.
+const AI_PLACES = ["jackson avenue","jackson ave","university avenue","university ave","molly barr","old taylor road","old taylor",
+  "south lamar","north lamar","lamar boulevard","highway 6","highway 7","highway 30","highway 314","county road","the square",
+  "courthouse square","vaught hemingway","the grove","sisk avenue","sisk ave","anderson road","college hill","college hill road",
+  "sardis","abbeville","taylor","water valley","batesville","pontotoc","coliseum","student union","kroger","walmart",
+  "baptist memorial","ole miss","campus walk","frontage road","west jackson","east university","chucky mullins","hathorn",
+  "belk","azalea","garfield","price street","depot street","van buren","north 14th","south 11th","harrison avenue","anchorage"];
+
+const AI_VARIANT = new Map();   // phrase -> concept key
+for (const [k, list] of Object.entries(AI_LEX)) for (const v of list) if (!AI_VARIANT.has(v)) AI_VARIANT.set(v, k);
+for (const p of AI_PLACES) if (!AI_VARIANT.has(p)) AI_VARIANT.set(p, "__place");
+
+const AI_STOP = new Set(["a","an","the","and","or","of","to","in","on","at","is","it","for","with","this","that","be","are","was","were","i","we","they","he","she","my","your","from","by","as","but","if"]);
+
+function aiTokens(text){
+  const out = []; const re = /[a-z0-9]+(?:['-][a-z0-9]+)*/gi; let m;
+  while ((m = re.exec(text))) out.push({ w: m[0].toLowerCase(), i: m.index, j: m.index + m[0].length });
+  return out;
+}
+
+// Bounded edit distance, counting a swapped pair of letters as one edit rather
+// than two -- "fier" for "fire" is the commonest way both a typist and Whisper
+// get a word wrong, and plain Levenshtein scores it the same as two unrelated
+// mistakes. Anything past `max` is uninteresting, so bail out early instead of
+// filling a whole matrix for every word of every transcript.
+function editDist(a, b, max){
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  if (a === b) return 0;
+  const n = a.length, m = b.length;
+  let prev2 = new Array(m + 1), prev = new Array(m + 1), cur = new Array(m + 1);
+  for (let j = 0; j <= m; j++) prev[j] = j;
+  for (let i = 1; i <= n; i++) {
+    cur[0] = i; let best = cur[0];
+    for (let j = 1; j <= m; j++) {
+      const cost = a[i-1] === b[j-1] ? 0 : 1;
+      let v = Math.min(prev[j] + 1, cur[j-1] + 1, prev[j-1] + cost);
+      if (i > 1 && j > 1 && a[i-1] === b[j-2] && a[i-2] === b[j-1]) v = Math.min(v, prev2[j-2] + 1);
+      cur[j] = v;
+      if (v < best) best = v;
+    }
+    if (best > max) return max + 1;
+    const t = prev2; prev2 = prev; prev = cur; cur = t;
+  }
+  return prev[m];
+}
+
+/* Parse the query. Supported, quietly: "quoted phrases", -excluded, tg:53682
+   or tg:opd to pin a talkgroup. Everything else is a term. */
+function aiParseQuery(q){
+  const phrases = [], terms = [], negs = [], tgs = [];
+  const re = /"([^"]+)"|(-?)(\S+)/g; let m;
+  while ((m = re.exec(q))) {
+    if (m[1]) { phrases.push(m[1].toLowerCase().trim()); continue; }
+    const neg = m[2] === "-", word = m[3];
+    if (/^tg:/i.test(word)) {
+      const v = word.slice(3).toLowerCase();
+      if (/^\d+$/.test(v)) tgs.push(Number(v));
+      else for (const [n, meta] of Object.entries(TG)) if (meta[0].includes(v)) tgs.push(Number(n));
+      continue;
+    }
+    const w = word.toLowerCase().replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, "");
+    if (!w) continue;
+    if (neg) negs.push(w); else terms.push(w);
+  }
+  return { phrases, terms, negs, tgs };
+}
+
+// Everything a term is willing to match, and what that match is worth.
+function aiExpand(term){
+  const out = new Map([[term, 1]]);
+  const concept = AI_VARIANT.get(term);
+  const add = (p, w) => { if (!out.has(p) || out.get(p) < w) out.set(p, w); };
+  if (concept && concept !== "__place") for (const v of AI_LEX[concept]) add(v, 0.72);
+  if (AI_LEX[term]) for (const v of AI_LEX[term]) add(v, 0.72);
+  // Plurals and simple inflections, both directions.
+  if (term.length > 3) { add(term + "s", 0.95); add(term + "es", 0.9); add(term + "ing", 0.85); add(term + "ed", 0.85); }
+  if (/s$/.test(term) && term.length > 4) add(term.slice(0, -1), 0.95);
+  if (/ing$/.test(term) && term.length > 5) add(term.slice(0, -3), 0.85);
+  return out;
+}
+
+/* Score one transcript against a parsed query. Returns null when it doesn't
+   qualify, otherwise a score and the character ranges worth highlighting. */
+function aiScore(rec, parsed, mode){
+  const text = rec.text || "";
+  if (!text) return null;
+  const low = text.toLowerCase();
+  const marks = [];
+
+  if (mode === "regex") {
+    let re;
+    try { re = new RegExp(parsed.raw, "gi"); } catch { return null; }
+    let m, n = 0;
+    while ((m = re.exec(text)) && n < 40) { if (m[0]) marks.push([m.index, m.index + m[0].length]); n++; if (m.index === re.lastIndex) re.lastIndex++; }
+    return marks.length ? { score: 1 + Math.min(marks.length, 5) * 0.1, marks } : null;
+  }
+
+  for (const neg of parsed.negs) if (low.includes(neg)) return null;
+
+  const toks = aiTokens(text);
+  let score = 0, matched = 0;
+  const hitPos = [];
+
+  for (const phrase of parsed.phrases) {
+    const at = low.indexOf(phrase);
+    if (at < 0) return null;                       // a quoted phrase is a requirement
+    marks.push([at, at + phrase.length]);
+    score += 1.6; matched++;
+  }
+
+  const smart = mode === "smart";
+  for (const term of parsed.terms) {
+    const variants = smart ? aiExpand(term) : new Map([[term, 1]]);
+    let best = 0, bestMark = null, bestTok = -1;
+
+    for (const [v, weight] of variants) {
+      if (v.includes(" ")) {                       // multi-word variant: plain substring
+        const at = low.indexOf(v);
+        if (at >= 0 && weight * 1.05 > best) { best = weight * 1.05; bestMark = [at, at + v.length]; }
+        continue;
+      }
+      for (let k = 0; k < toks.length; k++) {
+        const t = toks[k];
+        if (t.w === v) { if (weight > best) { best = weight; bestMark = [t.i, t.j]; bestTok = k; } }
+        else if (smart && weight === 1 && v.length >= 4 && t.w.length >= 3) {
+          // Only what you actually typed gets fuzzed. Fuzzing the expansions as
+          // well turns every transcript into a match -- a "10-50" variant will
+          // happily claim an unrelated "10-5".
+          const max = v.length >= 7 ? 2 : 1;
+          const d = editDist(v, t.w, max);
+          if (d <= max) {
+            const w = d === 1 ? 0.58 : 0.42;
+            if (w > best) { best = w; bestMark = [t.i, t.j]; bestTok = k; }
+          } else if (v.length >= 5 && t.w.startsWith(v.slice(0, v.length - 2)) && 0.5 > best) {
+            best = 0.5; bestMark = [t.i, t.j]; bestTok = k;   // heard the start of it
+          }
+        }
+      }
+    }
+    if (best > 0) {
+      score += best; matched++;
+      if (bestMark) {
+        marks.push(bestMark);
+        // Repeat mentions matter: a call that says "fire" four times is more
+        // about a fire than one that says it in passing. Mark them all, so the
+        // highlighting shows them too.
+        const word = low.slice(bestMark[0], bestMark[1]);
+        if (word.length >= 3) {
+          let from = 0, extra = 0;
+          while (extra < 6) {
+            const at = low.indexOf(word, from);
+            if (at < 0) break;
+            from = at + word.length;
+            if (at !== bestMark[0]) { marks.push([at, at + word.length]); extra++; }
+          }
+          score += Math.min(extra, 4) * 0.08;
+        }
+      }
+      if (bestTok >= 0) hitPos.push(bestTok);
+    }
+  }
+
+  const want = parsed.terms.length + parsed.phrases.length;
+  if (!matched) return null;
+  // A single weak fuzzy hit on a one-word query is noise, not a result.
+  if (want === 1 && score < 0.45) return null;
+  if (want > 1 && matched < Math.ceil(want / 2)) return null;
+
+  if (matched === want && want > 1) score += 0.5;                 // everything asked for
+  if (hitPos.length > 1) {
+    const spread = Math.max(...hitPos) - Math.min(...hitPos);
+    if (spread <= 8) score += 0.35;                               // said in one breath
+  }
+  if (rec.emergency) score += 0.15;
+
+  return { score, marks };
+}
+
+function aiHighlight(text, marks, focus){
+  // Merge overlapping ranges, then cut a readable window around the first hit.
+  const m = marks.slice().sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const r of m) {
+    const last = merged[merged.length - 1];
+    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+    else merged.push([r[0], r[1]]);
+  }
+  let start = 0, end = text.length, lead = false, tail = false;
+  if (focus && text.length > 260 && merged.length) {
+    const first = merged[0][0];
+    start = Math.max(0, first - 90);
+    if (start > 0) { const sp = text.indexOf(" ", start); start = sp >= 0 && sp < first ? sp + 1 : start; lead = true; }
+    end = Math.min(text.length, start + 260);
+    if (end < text.length) { const sp = text.lastIndexOf(" ", end); if (sp > start) end = sp; tail = true; }
+  }
+  let out = "", cur = start;
+  for (const [a, b] of merged) {
+    if (b <= start || a >= end) continue;
+    const s = Math.max(a, start), e = Math.min(b, end);
+    if (s > cur) out += esc(text.slice(cur, s));
+    out += "<mark>" + esc(text.slice(s, e)) + "</mark>";
+    cur = e;
+  }
+  if (cur < end) out += esc(text.slice(cur, end));
+  return (lead ? "&hellip; " : "") + out + (tail ? " &hellip;" : "");
+}
+
+function aiSearchIndex(query, opts){
+  const mode = opts.mode || "smart";
+  const parsed = aiParseQuery(query);
+  parsed.raw = query;
+  if (mode !== "regex" && !parsed.terms.length && !parsed.phrases.length) return [];
+
+  const since = opts.hours ? Date.now() - opts.hours * 3600000 : 0;
+  // How much was asked for, so a hit can be judged against it: one exact word
+  // out of one is a strong match, one out of four is not.
+  const want = Math.max(1, parsed.terms.length + parsed.phrases.length);
+  const hits = [];
+  for (const rec of TX.values()) {
+    if (since && rec.at < since) continue;
+    if (opts.emergencyOnly && !rec.emergency) continue;
+    if (parsed.tgs.length && !parsed.tgs.includes(rec.tg)) continue;
+    if (opts.onlyMine && !enabled.has(rec.tg)) continue;
+    const s = aiScore(rec, parsed, mode);
+    if (s) hits.push({ rec, score: s.score, marks: s.marks, rel: s.score / want });
+  }
+  hits.sort((a, b) => (b.score - a.score) || (b.rec.at - a.rec.at));
+  return hits.slice(0, 200);
+}
+
+/* ---------- collecting a range of calls to transcribe ----------
+   /calls/older hands back 50 at a time walking backwards, so a range is just
+   that walk repeated until it steps past the start of the window. This only
+   fetches call metadata -- no audio -- so it is quick even over days. */
+async function aiCollectRange(fromMs, toMs, onCount, cancelled){
+  const found = new Map();
+  let anchor = toMs, pages = 0;
+  while (!cancelled() && pages++ < 1200) {
+    let list;
+    try {
+      const r = await fetch(OLDER_API + anchor, { cache: "no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      list = (await r.json()).calls || [];
+    } catch { break; }
+    if (!list.length) break;
+
+    let oldest = anchor;
+    for (const c of list) {
+      const at = new Date(c.time).getTime();
+      if (at < oldest) oldest = at;
+      if (at >= fromMs && at <= toMs && !found.has(c._id)) found.set(c._id, { ...c, at });
+    }
+    onCount(found.size);
+    if (oldest <= fromMs || oldest >= anchor) break;   // reached the window, or stopped making progress
+    anchor = oldest;
+  }
+  return [...found.values()].sort((a, b) => b.at - a.at);
+}
+
+/* ---------- the index job ---------- */
+const aiJob = { running:false, cancel:false, done:0, total:0, ok:0, fail:0, started:0, rate:0, label:"" };
+
+function aiFmtDur(ms){
+  if (!isFinite(ms) || ms <= 0) return "—";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return s + "s";
+  if (s < 3600) return Math.floor(s / 60) + "m " + (s % 60) + "s";
+  return Math.floor(s / 3600) + "h " + Math.floor((s % 3600) / 60) + "m";
+}
+function aiRenderJob(){
+  const box = $("aiJob");
+  box.hidden = !aiJob.running;
+  if (!aiJob.running) return;
+  $("aiJobLbl").textContent = aiJob.label;
+  $("aiJobNum").textContent = aiJob.total ? aiJob.done + " / " + aiJob.total : "";
+  $("aiJobBar").style.width = aiJob.total ? Math.round((aiJob.done / aiJob.total) * 100) + "%" : "0%";
+  const left = aiJob.total && aiJob.rate ? (aiJob.total - aiJob.done) * aiJob.rate : 0;
+  if (!aiJob.rate) { $("aiJobRate").textContent = "Starting\u2026"; return; }
+  const cooling = aiPace.coolUntil - Date.now();
+  if (cooling > 1500) {
+    $("aiJobRate").textContent = "OpenMHz is rate-limiting \u00b7 waiting " + Math.ceil(cooling / 1000) + "s before trying again";
+    return;
+  }
+  const bits = [(aiJob.rate / 1000).toFixed(1) + "s per call", "about " + aiFmtDur(left) + " left"];
+  if (aiPace.throttled) bits.push("pacing around OpenMHz rate limits");
+  if (aiJob.fail) bits.push(aiJob.fail + " to retry");
+  $("aiJobRate").textContent = bits.join(" \u00b7 ");
+}
+function aiRenderIndexStat(){
+  const n = TX.size;
+  if (!n) { $("aiIndexStat").textContent = "Index empty"; return; }
+  let withText = 0, oldest = Infinity, newest = 0, secs = 0;
+  for (const r of TX.values()) {
+    if (r.text) withText++;
+    if (r.at < oldest) oldest = r.at;
+    if (r.at > newest) newest = r.at;
+    secs += r.len || 0;
+  }
+  $("aiIndexStat").textContent = n.toLocaleString() + " calls · " + aiFmtDur(secs * 1000) + " of audio · " + withText.toLocaleString() + " with speech";
+  $("aiIndexHint").textContent = "Indexed " + shortStamp(oldest) + " → " + shortStamp(newest) + ". Search only finds calls that have been transcribed.";
+}
+
+async function aiRunIndex(list, label){
+  if (aiJob.running) return;
+  Object.assign(aiJob, { running:true, cancel:false, done:0, total:list.length, ok:0, fail:0, failedLeft:0,
+                       stopReason:null, lastErr:null, started:Date.now(), rate:0, label });
+  aiPace.throttled = 0; aiPace.streak = 0; aiPace.coolUntil = 0;
+  aiRenderJob();
+  const ticker = setInterval(() => { if (aiJob.running) aiRenderJob(); }, 1000);
+
+  const cancelled = () => aiJob.cancel;
+  const started = Date.now();
+  let cursor = 0, failed = [];
+
+  // Two clips in flight, so one is downloading while the other transcribes.
+  // The pacer decides how fast requests actually leave, and asrRun keeps the
+  // GPU on one clip at a time; more parallelism here buys nothing.
+  const worker = async () => {
+    while (!cancelled()) {
+      const i = cursor++;
+      if (i >= list.length) return;
+      const c = list[i];
+      try {
+        await transcribeCall(c);
+        aiJob.ok++;
+      } catch (e) {
+        if (e && e.message === "stopped") return;     // Stop pressed mid-wait
+        failed.push(c);
+        aiJob.lastErr = e.message || String(e);
+        // Nothing is getting through at all -- a bad proxy URL, not bad luck.
+        // Give up only on errors a retry cannot fix -- being rate-limited at
+        // the start of a job is normal and the pacer handles it.
+        if (failed.length >= 6 && aiJob.ok === 0 && !/rate limited|HTTP 5|network/i.test(aiJob.lastErr || "")) {
+          aiJob.cancel = true; aiJob.stopReason = aiJob.lastErr;
+        }
+      }
+      aiJob.done++;
+      aiJob.fail = failed.length;
+      aiJob.rate = (Date.now() - started) / Math.max(1, aiJob.done);
+      if (aiJob.done % 2 === 0 || aiJob.done === aiJob.total) { aiRenderJob(); aiRenderIndexStat(); }
+      if (aiJob.done % 12 === 0) render();
+    }
+  };
+  await Promise.all([worker(), worker()]);
+
+  // One sweep back over whatever got refused -- by now the pacer has widened
+  // the gap, so calls that were rate-limited during the rush usually land.
+  if (failed.length && !aiJob.cancel) {
+    const retry = failed;
+    failed = [];
+    aiJob.label = "Retrying " + retry.length.toLocaleString() + " that were rate-limited";
+    aiJob.total = aiJob.done + retry.length;
+    aiRenderJob();
+    for (const c of retry) {
+      if (aiJob.cancel) break;
+      try { await transcribeCall(c); aiJob.ok++; }
+      catch (e) {
+        if (e && e.message === "stopped") break;
+        failed.push(c); aiJob.lastErr = e.message || String(e);
+      }
+      aiJob.done++; aiJob.fail = failed.length;
+      aiRenderJob(); aiRenderIndexStat();
+    }
+  }
+
+  aiJob.failedLeft = failed.length;
+  aiJob.running = false;
+  clearInterval(ticker);
+  aiRenderJob(); aiRenderIndexStat(); render();
+
+  // Say plainly what came back, rather than leaving a half-filled bar behind.
+  const hint = $("aiIndexHint");
+  if (aiJob.stopReason) {
+    hint.textContent = "Stopped — nothing could be fetched (" + aiJob.stopReason + "). Check the proxy URL under Settings.";
+  } else if (aiJob.cancel) {
+    hint.textContent = "Stopped. " + aiJob.ok.toLocaleString() + " calls were transcribed and kept.";
+  } else if (aiJob.failedLeft) {
+    hint.textContent = aiJob.ok.toLocaleString() + " transcribed. " + aiJob.failedLeft.toLocaleString() +
+      " could not be fetched even after retrying — run the same range again later and only those will be attempted.";
+  } else {
+    hint.textContent = "Done — " + aiJob.ok.toLocaleString() + " calls transcribed.";
+  }
+  if ($("aiQuery").value.trim()) aiDoSearch();
+  return aiJob;
+}
+
+async function aiIndexRange(hours){
+  if (aiJob.running) return;
+  if (!proxied("https://media2.openmhz.com/x.m4a")) { aiShowSetup(true); return; }
+
+  Object.assign(aiJob, { running:true, cancel:false, done:0, total:0, ok:0, fail:0, started:Date.now(), rate:0, label:"Loading the model…" });
+  aiRenderJob();
+  try {
+    await ensureASR(d => {
+      if (d && d.status === "progress" && d.file && /\.onnx$/.test(d.file)) {
+        aiJob.label = "Downloading the model · " + Math.round(d.progress || 0) + "%";
+        aiRenderJob();
+      }
+    });
+    $("aiEngine").textContent = "Running on " + asrState.device;
+  } catch (e) {
+    aiJob.running = false; aiRenderJob();
+    $("aiIndexHint").textContent = "Could not load the model: " + e.message;
+    return;
+  }
+
+  aiJob.label = "Finding calls…"; aiRenderJob();
+  const to = Date.now(), from = to - hours * 3600000;
+  const all = await aiCollectRange(from, to, n => { aiJob.label = "Finding calls… " + n + " so far"; aiRenderJob(); }, () => aiJob.cancel);
+
+  const todo = all.filter(c => !TX.has(c._id) && (!$("aiScope").checked || enabled.has(c.talkgroupNum)));
+  aiJob.running = false;
+  if (aiJob.cancel || !todo.length) {
+    aiRenderJob();
+    $("aiIndexHint").textContent = all.length
+      ? "All " + all.length.toLocaleString() + " calls in that range are already transcribed."
+      : "No calls found in that range.";
+    return;
+  }
+  // A range is whatever the system was busy enough to produce, so the same
+  // "last 6 hours" can be 200 calls or 2,000. Say which before starting, and
+  // say roughly how long it will sit there.
+  const guess = todo.length * 0.9 * 1000;
+  $("aiIndexHint").textContent = "Transcribing " + todo.length.toLocaleString() + " calls — roughly " +
+    aiFmtDur(guess) + " if OpenMHz doesn't throttle, longer if it does. The scanner keeps working meanwhile; Stop any time.";
+  await aiRunIndex(todo, "Transcribing " + todo.length.toLocaleString() + " calls");
+}
+
+/* ---------- live transcription ----------
+   Off by default. When on, new traffic is transcribed as it lands, so the
+   index grows on its own and the log fills in captions a few seconds behind
+   the audio. */
+const aiLiveQ = [];
+let aiLivePumping = false;
+function aiQueueLive(list){
+  if (!aiCfg.live || !proxied("https://x.openmhz.com/x")) return;
+  for (const c of list) if (!TX.has(c._id) && enabled.has(c.talkgroupNum)) aiLiveQ.push(c);
+  aiPumpLive();
+}
+async function aiPumpLive(){
+  if (aiLivePumping || !aiLiveQ.length || aiJob.running) return;
+  aiLivePumping = true;
+  try {
+    await ensureASR();
+    while (aiLiveQ.length && aiCfg.live && !aiJob.running) {
+      const c = aiLiveQ.shift();
+      if (TX.has(c._id)) continue;
+      try { await transcribeCall(c); render(); renderNpTranscript(); aiRenderIndexStat(); } catch {}
+    }
+  } catch {} finally { aiLivePumping = false; }
+}
+
+/* ---------- results ---------- */
+let aiHits = [];
+function aiRenderResults(note){
+  const box = $("aiResults");
+  if (note) { box.innerHTML = '<div class="empty">' + note + "</div>"; return; }
+  if (!aiHits.length) { box.innerHTML = ""; return; }
+  box.innerHTML = aiHits.map((h, idx) => {
+    const r = h.rec, g = groupOf(r.tg);
+    const [alpha, desc] = TG[r.tg] || ["Talkgroup " + r.tg, ""];
+    const isCur = current && current._id === r._id;
+    return '<div class="hit' + (isCur ? " playing" : "") + '" data-hit="' + idx + '" role="button" tabindex="0">' +
+      '<span class="stripe" style="background:' + KIND_COLOR[g.kind] + '"></span>' +
+      '<span class="hit-top">' +
+        '<span class="hit-tg">' + esc(alpha.toUpperCase()) + "</span>" +
+        '<span class="hit-when mono" title="' + esc(exactStamp(r.at)) + '">' + esc(shortStamp(r.at)) + " · " + mmss(r.len) + "</span>" +
+        (r.emergency ? '<span class="chip">Emerg</span>' : "") +
+        '<span class="hit-score">' + (h.rel >= 0.95 ? "strong" : h.rel >= 0.55 ? "likely" : "loose") + " match</span>" +
+      "</span>" +
+      '<span class="hit-tx">' + aiHighlight(r.text, h.marks, true) + "</span>" +
+    "</div>";
+  }).join("");
+}
+
+function aiDoSearch(){
+  const q = $("aiQuery").value.trim();
+  if (!q) { aiHits = []; aiRenderResults(TX.size ? "" : "Nothing is transcribed yet — pick a range below and transcribe it."); return; }
+  if (!TX.size) { aiHits = []; aiRenderResults("Nothing is transcribed yet — pick a range below and transcribe it."); return; }
+  aiHits = aiSearchIndex(q, {
+    mode: $("aiMode").value,
+    hours: Number($("aiWhen").value) || 0,
+    onlyMine: $("aiScope").checked,
+    emergencyOnly: $("aiEmerg").checked
+  });
+  if (!aiHits.length) {
+    aiRenderResults("No transcribed call matches that. " +
+      (TX.size < 200 ? "Only " + TX.size + " calls are indexed so far — transcribe a wider range." : "Try fewer words, or Smart match."));
+    return;
+  }
+  aiRenderResults();
+}
+
+/* ---------- panel plumbing ---------- */
+function aiShowSetup(force){
+  const need = !proxied("https://media2.openmhz.com/x.m4a");
+  $("aiSetup").hidden = !need;
+  if (need || force) { $("aiSettingsBox").hidden = false; $("aiSettings").setAttribute("aria-expanded", "true"); }
+}
+function aiOpen(show){
+  const p = $("aiPanel");
+  const on = show === undefined ? p.hidden : show;
+  p.hidden = !on;
+  $("aiToggle").setAttribute("aria-pressed", on);
+  if (on) { aiShowSetup(false); aiRenderIndexStat(); $("aiQuery").focus(); }
+}
+
+/* ---------- events ---------- */
+$("aiToggle").addEventListener("click", () => aiOpen());
+$("aiSearch").addEventListener("click", aiDoSearch);
+$("aiQuery").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); aiDoSearch(); } });
+$("aiMode").addEventListener("change", () => { if ($("aiQuery").value.trim()) aiDoSearch(); });
+for (const id of ["aiWhen", "aiScope", "aiEmerg"]) $(id).addEventListener("change", () => { if ($("aiQuery").value.trim()) aiDoSearch(); });
+
+$("aiSettings").addEventListener("click", () => {
+  const box = $("aiSettingsBox");
+  box.hidden = !box.hidden;
+  $("aiSettings").setAttribute("aria-expanded", String(!box.hidden));
+});
+
+$("aiResults").addEventListener("click", e => {
+  const el = e.target.closest(".hit"); if (!el) return;
+  const h = aiHits[Number(el.dataset.hit)]; if (!h) return;
+  const r = h.rec;
+  // A hit can be older than anything currently loaded in the log, so play it
+  // straight from the stored record rather than looking it up in `calls`.
+  play(callById(r._id) || { _id:r._id, url:r.url, at:r.at, talkgroupNum:r.tg, len:r.len, emergency:r.emergency, srcList:r.src ? [{src:r.src}] : [] }, false);
+  aiRenderResults();
+});
+$("aiResults").addEventListener("keydown", e => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const el = e.target.closest(".hit"); if (!el) return;
+  e.preventDefault(); el.click();
+});
+
+$("aiIndex").addEventListener("click", () => aiIndexRange(Number($("aiRange").value) || 6));
+$("aiRange").addEventListener("change", () => {
+  if (aiJob.running) return;
+  const h = Number($("aiRange").value) || 6;
+  // Rate over what is already indexed is the only honest basis for a guess,
+  // and until something is indexed there is nothing to base one on.
+  let seen = 0;
+  const since = Date.now() - h * 3600000;
+  for (const r of TX.values()) if (r.at >= since) seen++;
+  $("aiIndexHint").textContent = seen
+    ? seen.toLocaleString() + " calls in that range are already transcribed; only the rest would be fetched."
+    : "Nothing in that range is transcribed yet.";
+});
+$("aiJobStop").addEventListener("click", () => { aiJob.cancel = true; aiJob.label = "Stopping…"; aiRenderJob(); });
+
+$("aiProxy").addEventListener("change", () => {
+  aiCfg.proxy = $("aiProxy").value.trim(); aiPersist(); aiShowSetup(false);
+});
+$("aiTestProxy").addEventListener("click", async () => {
+  aiCfg.proxy = $("aiProxy").value.trim(); aiPersist();
+  const btn = $("aiTestProxy"), hint = $("aiIndexHint");
+  btn.disabled = true; btn.textContent = "Testing…";
+  try {
+    const probe = calls.find(c => c.url) || (await (await fetch(API, { cache:"no-store" })).json()).calls[0];
+    const pcm = await fetchPcm(probe.url);
+    hint.textContent = "Proxy works — decoded " + (pcm.length / 16000).toFixed(1) + "s of audio.";
+    $("aiSetup").hidden = true;
+  } catch (e) {
+    hint.textContent = "Proxy test failed: " + e.message;
+  }
+  btn.disabled = false; btn.textContent = "Test";
+});
+
+$("aiModel").addEventListener("change", () => {
+  aiCfg.model = $("aiModel").value; aiPersist();
+  asrState.ready = false;                       // next transcribe reloads with the new weights
+  $("aiEngine").textContent = "Model will load on the next transcribe.";
+});
+$("aiLive").addEventListener("change", e => {
+  aiCfg.live = e.target.checked; aiPersist();
+  if (aiCfg.live) aiPumpLive();
+});
+$("aiShowRows").addEventListener("change", e => { aiCfg.showRows = e.target.checked; aiPersist(); render(); });
+
+$("aiClear").addEventListener("click", async () => {
+  if (!TX.size) return;
+  if (!confirm("Delete all " + TX.size.toLocaleString() + " stored transcripts? The audio stays on OpenMHz; only this local index goes away.")) return;
+  await txClear(); aiHits = []; aiRenderResults(""); aiRenderIndexStat(); render();
+});
+$("aiExport").addEventListener("click", () => {
+  if (!TX.size) return;
+  const rows = [...TX.values()].sort((a, b) => a.at - b.at).map(r => ({
+    time: new Date(r.at).toISOString(), talkgroup: r.tg,
+    name: (TG[r.tg] || ["", ""])[0], seconds: r.len, emergency: r.emergency, unit: r.src,
+    model: AI_MODELS[r.model] ? AI_MODELS[r.model].label : r.model, transcript: r.text
+  }));
+  const blob = new Blob([JSON.stringify(rows, null, 2)], { type:"application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "oxfmswin-transcripts-" + new Date().toISOString().slice(0, 10) + ".json";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+});
+
+$("npTx").addEventListener("click", async e => {
+  if (!e.target.closest("#npTxBtn") || !current) return;
+  const el = $("npTx");
+  el.className = "np-tx pending"; el.textContent = "Transcribing\u2026";
+  try {
+    await ensureASR();
+    await transcribeCall(current);
+    renderNpTranscript(); render(); aiRenderIndexStat();
+  } catch (err) { el.textContent = "Couldn't transcribe: " + err.message; }
+});
+
+// "/" opens search from anywhere, the way it does in most things with a search box.
+document.addEventListener("keydown", e => {
+  if (e.key === "/" && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) {
+    e.preventDefault(); aiOpen(true);
+  } else if (e.key === "Escape" && !$("aiPanel").hidden && !aiJob.running) {
+    aiOpen(false);
+  }
+});
+
+/* ---------- boot ---------- */
+$("aiProxy").value = aiCfg.proxy;
+$("aiModel").value = aiCfg.model;
+$("aiLive").checked = aiCfg.live;
+$("aiShowRows").checked = aiCfg.showRows;
+$("aiEngine").textContent = navigator.gpu ? "WebGPU available." : "No WebGPU here — transcription will use WASM and be slower.";
+
+txAll().then(rows => {
+  for (const r of rows) TX.set(r._id, r);
+  aiRenderIndexStat();
+  if (rows.length) render();
+  if (aiCfg.live) aiPumpLive();
+}).catch(() => { $("aiIndexStat").textContent = "Local storage unavailable"; });
 
 /* ---------- boot ---------- */
 $("vol").value = volume;
