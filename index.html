@@ -240,6 +240,8 @@ footer a{color:var(--ink-mid)}
 .btn:disabled{opacity:.4;cursor:default}
 .btn.ghost{border-color:var(--line);color:var(--ink-mid);background:var(--panel-2);font-weight:600;letter-spacing:.08em;padding:9px 14px}
 .btn.ghost:hover:not(:disabled){color:var(--ink);border-color:#38434f;background:var(--panel-2)}
+.btn.ghost[aria-pressed="true"]{color:var(--signal);border-color:var(--signal-dim);background:rgba(240,168,72,.06)}
+textarea.ai-q{resize:vertical;line-height:1.5;font-family:"IBM Plex Mono",monospace;font-size:13.5px}
 .btn.stop{border-color:var(--alert);color:var(--alert)}
 .btn.stop:hover:not(:disabled){background:var(--alert);border-color:var(--alert);color:#fff}
 .ai-sel{background:var(--panel-2);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius);
@@ -417,7 +419,36 @@ footer a{color:var(--ink-mid)}
           </div>
         </div>
 
-        <div class="ai-row">
+        <div class="ai-row" style="gap:6px">
+          <button class="btn ghost" id="aiTabRange" aria-pressed="true">By range</button>
+          <button class="btn ghost" id="aiTabWindows" aria-pressed="false">Around known times</button>
+        </div>
+
+        <div id="aiWindowsBox" class="ai-settings" hidden>
+          <div class="ai-note">
+            Paste the times of calls you already know about &mdash; from a dispatch app, a run sheet, a report &mdash;
+            one per line. Only the traffic around those moments gets transcribed, across every talkgroup you have
+            selected, instead of days of everything else.
+          </div>
+          <textarea class="ai-q" id="aiTimes" rows="5" spellcheck="false"
+            placeholder="14:32&#10;2:47 PM&#10;09/21 23:05&#10;2026-09-20 06:18"
+            aria-label="Times of calls, one per line"></textarea>
+          <div class="ai-row">
+            <label class="ai-chk">Date for times without one
+              <input type="date" id="aiTimesDate" class="ai-sel" style="color-scheme:dark">
+            </label>
+            <select class="ai-sel" id="aiPad" aria-label="How much traffic around each time">
+              <option value="5">&plusmn; 5 min</option>
+              <option value="10" selected>&plusmn; 10 min</option>
+              <option value="15">&plusmn; 15 min</option>
+              <option value="30">&plusmn; 30 min</option>
+            </select>
+            <button class="btn" id="aiWinGo" disabled>Transcribe these windows</button>
+          </div>
+          <div class="ai-note" id="aiTimesNote">One time per line.</div>
+        </div>
+
+        <div class="ai-row" id="aiRangeBox">
           <select class="ai-sel" id="aiRange" aria-label="Range to transcribe">
             <option value="1">Last hour</option>
             <option value="6" selected>Last 6 hours</option>
@@ -1986,6 +2017,7 @@ function aiRenderResults(note){
 }
 
 function aiDoSearch(){
+  aiIncidents = null;
   const q = $("aiQuery").value.trim();
   if (!q) { aiHits = []; aiRenderResults(TX.size ? "" : "Nothing is transcribed yet — pick a range below and transcribe it."); return; }
   if (!TX.size) { aiHits = []; aiRenderResults("Nothing is transcribed yet — pick a range below and transcribe it."); return; }
@@ -2017,6 +2049,240 @@ function aiOpen(show){
   if (on) { aiShowSetup(false); aiRenderIndexStat(); $("aiQuery").focus(); }
 }
 
+/* ---------- incident windows ----------
+   The practical way to use this: you already know when something happened --
+   from a dispatch app, a run sheet, a report -- and you want the radio traffic
+   around each of those moments, across every talkgroup, without transcribing
+   days of everything else. Paste the times, get a few hundred calls instead of
+   tens of thousands. */
+function aiParseTimes(text, fallbackDate){
+  const out = [];
+  for (const raw of String(text).split(/[\n,;]+/)) {
+    const line = raw.trim();
+    if (!line) continue;
+
+    // A full ISO stamp needs no help.
+    // Whatever is not the timestamp -- address, complaint, unit -- is kept as
+    // the thing to look for in the traffic around that time.
+    const labelOf = (l, timeStr, dateStr) => l
+      .replace(timeStr || "", " ").replace(dateStr || "", " ")
+      .replace(/\b(?:am|pm|a\.m\.|p\.m\.)\b/gi, " ")
+      .replace(/^[\s\-–—|,:;#.]+|[\s\-–—|,:;#.]+$/g, "")
+      .replace(/\s+/g, " ").trim();
+
+    const iso = line.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2})?)/);
+    if (iso) {
+      const ms = Date.parse(iso[1] + "T" + iso[2]);
+      out.push({ line, ms: isFinite(ms) ? ms : null, label: labelOf(line, iso[0], "") });
+      continue;
+    }
+
+    // 0918 with no colon is how most dispatch systems write it. A bare four
+    // digits is also what a house number looks like -- "1708 Jackson Ave" --
+    // so this is only read as a time at the very start of a line, which is
+    // where a call list puts it. The preview shows what was understood, so a
+    // wrong guess is visible before anything is fetched.
+    const t = line.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([ap])\.?m?\.?/i)
+           || line.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/)
+           || line.match(/^([01]\d|2[0-3])([0-5]\d)(?![\d:])/);
+    if (!t) { out.push({ line, ms: null, label: line }); continue; }
+
+    let h = Number(t[1]);
+    const mi = Number(t[2]), s = Number(t[3] || 0);
+    const ap = (t[4] || "").toLowerCase();
+    if (ap === "p" && h < 12) h += 12;
+    if (ap === "a" && h === 12) h = 0;
+    if (h > 23 || mi > 59) { out.push({ line, ms: null, label: line }); continue; }
+
+    // A date on the same line wins over the date box.
+    const dm = line.match(/(\d{1,2})[\/-](\d{1,2})(?:[\/-](\d{2,4}))?/);
+    let d;
+    if (dm) {
+      let yr = dm[3] ? Number(dm[3]) : new Date().getFullYear();
+      if (yr < 100) yr += 2000;
+      d = new Date(yr, Number(dm[1]) - 1, Number(dm[2]));
+    } else if (fallbackDate) {
+      const p = fallbackDate.split("-");
+      d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    } else {
+      d = new Date();
+    }
+    d.setHours(h, mi, s, 0);
+    out.push({ line, ms: d.getTime(), label: labelOf(line, t[0], dm ? dm[0] : "") });
+  }
+  return out;
+}
+
+// Overlapping windows would otherwise fetch the same calls twice.
+function aiMergeWindows(stamps, padMs){
+  const spans = stamps.filter(t => t.ms).map(t => [t.ms - padMs, t.ms + padMs]).sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const s of spans) {
+    const last = merged[merged.length - 1];
+    if (last && s[0] <= last[1]) last[1] = Math.max(last[1], s[1]);
+    else merged.push([s[0], s[1]]);
+  }
+  return merged;
+}
+
+function aiRenderWindowPreview(){
+  const stamps = aiParseTimes($("aiTimes").value, $("aiTimesDate").value);
+  const pad = Number($("aiPad").value) * 60000;
+  const good = stamps.filter(s => s.ms), bad = stamps.filter(s => !s.ms);
+  const merged = aiMergeWindows(stamps, pad);
+  const cutoff = Date.now() - 30 * 86400000;
+  const tooOld = good.filter(s => s.ms < cutoff).length;
+  const ahead  = good.filter(s => s.ms > Date.now()).length;
+
+  const el = $("aiTimesNote");
+  if (!good.length) { el.textContent = stamps.length ? "No times recognised yet." : "One time per line."; $("aiWinGo").disabled = true; return; }
+  const minutes = merged.reduce((a, w) => a + (w[1] - w[0]) / 60000, 0);
+  const parts = [good.length + " time" + (good.length === 1 ? "" : "s"),
+                 merged.length + " window" + (merged.length === 1 ? "" : "s") + " after merging",
+                 Math.round(minutes) + " min of traffic to scan"];
+  if (bad.length)  parts.push(bad.length + " line" + (bad.length === 1 ? "" : "s") + " not understood");
+  if (tooOld)      parts.push(tooOld + " older than OpenMHz keeps (~30 days)");
+  if (ahead)       parts.push(ahead + " in the future — check the date");
+  // Show what each line was understood to mean. A bare "1708 Jackson Ave" with
+  // no time reads as 17:08, which is the right guess on a dispatch list and the
+  // wrong one here -- so it has to be visible before anything gets fetched.
+  el.innerHTML = esc(parts.join(" · ")) +
+    '<div style="margin-top:7px;display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:baseline">' +
+    good.slice(0, 12).map(s =>
+      '<span class="mono" style="color:var(--signal)">' + esc(shortStamp(s.ms)) + "</span>" +
+      '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+        (s.label ? esc(s.label) : '<em style="opacity:.5">time only — will show all traffic in the window</em>') + "</span>"
+    ).join("") +
+    (good.length > 12 ? '<span></span><span style="opacity:.6">…and ' + (good.length - 12) + " more</span>" : "") +
+    "</div>" +
+    (bad.length ? '<div style="margin-top:6px;color:var(--alert)">Not understood: ' +
+      esc(bad.slice(0,3).map(b=>b.line.slice(0,40)).join(" · ")) + "</div>" : "");
+  $("aiWinGo").disabled = false;
+}
+
+async function aiIndexWindows(){
+  if (aiJob.running) return;
+  if (!proxied("https://media2.openmhz.com/x.m4a")) { aiShowSetup(true); return; }
+
+  const stamps = aiParseTimes($("aiTimes").value, $("aiTimesDate").value);
+  const pad = Number($("aiPad").value) * 60000;
+  const windows = aiMergeWindows(stamps, pad);
+  if (!windows.length) return;
+
+  Object.assign(aiJob, { running:true, cancel:false, done:0, total:0, ok:0, fail:0, label:"Loading the model…", rate:0 });
+  aiRenderJob();
+  try {
+    await ensureASR(d => {
+      if (d && d.status === "progress" && /\.onnx$/.test(d.file || "")) {
+        aiJob.label = "Downloading the model · " + Math.round(d.progress || 0) + "%";
+        aiRenderJob();
+      }
+    });
+    $("aiEngine").textContent = "Running on " + asrState.device;
+  } catch (e) {
+    aiJob.running = false; aiRenderJob();
+    $("aiIndexHint").textContent = "Could not load the model: " + e.message;
+    return;
+  }
+
+  const scoped = ($("aiScope").checked && enabled.size && enabled.size < Object.keys(TG).length) ? [...enabled] : null;
+  const found = new Map();
+  for (let i = 0; i < windows.length && !aiJob.cancel; i++) {
+    aiJob.label = "Finding calls · window " + (i + 1) + " of " + windows.length;
+    aiRenderJob();
+    const list = await aiCollectRange(windows[i][0], windows[i][1], () => {}, () => aiJob.cancel, scoped);
+    for (const c of list) found.set(c._id, c);
+  }
+
+  const inScope = [...found.values()].filter(c => !TX.has(c._id));
+  const todo = inScope.filter(c => (c.len || 0) >= aiCfg.minLen);
+  const skipped = inScope.length - todo.length;
+  aiJob.running = false;
+
+  if (aiJob.cancel || !todo.length) {
+    aiRenderJob();
+    $("aiIndexHint").textContent = found.size
+      ? "Found " + found.size.toLocaleString() + " calls in those windows; all of them are already transcribed."
+      : "No calls found in those windows. Check the date, and that the times are inside the ~30 days OpenMHz keeps.";
+    return;
+  }
+  $("aiIndexHint").textContent = "Transcribing " + todo.length.toLocaleString() + " calls across " +
+    windows.length + " window" + (windows.length === 1 ? "" : "s") +
+    (skipped ? " · skipping " + skipped + " under " + aiCfg.minLen + "s" : "") + ".";
+  await aiRunIndex(todo, "Transcribing " + todo.length.toLocaleString() + " calls around your times");
+  aiRenderIncidents();
+}
+
+/* For each pasted incident, the traffic in its window, with the transmissions
+   that mention its address or complaint pulled to the top. That ranking is the
+   whole point: a ten-minute window is still thirty-odd calls to wade through,
+   and the address is usually said out loud within the first few of them. */
+let aiIncidents = null;
+
+function aiBuildIncidents(){
+  const stamps = aiParseTimes($("aiTimes").value, $("aiTimesDate").value).filter(s => s.ms);
+  const pad = Number($("aiPad").value) * 60000;
+  const onlyMine = $("aiScope").checked;
+  return stamps.map(s => {
+    const inWin = [...TX.values()]
+      .filter(r => r.at >= s.ms - pad && r.at <= s.ms + pad && (!onlyMine || enabled.has(r.tg)))
+      .sort((a, b) => a.at - b.at);
+    let ranked = null;
+    if (s.label) {
+      const parsed = aiParseQuery(s.label);
+      parsed.raw = s.label;
+      const want = Math.max(1, parsed.terms.length + parsed.phrases.length);
+      ranked = inWin
+        .map(rec => { const sc = aiScore(rec, parsed, "smart"); return sc ? { rec, score: sc.score, marks: sc.marks, rel: sc.score / want } : null; })
+        .filter(Boolean)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 6);
+    }
+    return { ms: s.ms, label: s.label, all: inWin, ranked };
+  });
+}
+
+function aiHitHtml(h, idx){
+  const r = h.rec, g = groupOf(r.tg);
+  const [alpha] = TG[r.tg] || ["Talkgroup " + r.tg, ""];
+  const isCur = current && current._id === r._id;
+  return '<div class="hit' + (isCur ? " playing" : "") + '" data-hit="' + idx + '" role="button" tabindex="0">' +
+    '<span class="stripe" style="background:' + KIND_COLOR[g.kind] + '"></span>' +
+    '<span class="hit-top">' +
+      '<span class="hit-tg">' + esc(alpha.toUpperCase()) + "</span>" +
+      '<span class="hit-when mono" title="' + esc(exactStamp(r.at)) + '">' + esc(shortStamp(r.at)) + " · " + mmss(r.len) + "</span>" +
+      (r.emergency ? '<span class="chip">Emerg</span>' : "") +
+      (h.rel != null ? '<span class="hit-score">' + (h.rel >= 0.95 ? "strong" : h.rel >= 0.55 ? "likely" : "loose") + " match</span>" : "") +
+    "</span>" +
+    '<span class="hit-tx">' + (r.text ? aiHighlight(r.text, h.marks || [], true) : "<em style=\'opacity:.55\'>no speech picked up</em>") + "</span>" +
+  "</div>";
+}
+
+function aiRenderIncidents(){
+  aiIncidents = aiBuildIncidents();
+  aiHits = [];                       // keep click handling working: one flat list
+  const box = $("aiResults");
+  if (!aiIncidents.length) { box.innerHTML = '<div class="empty">No times to show.</div>'; return; }
+
+  const parts = [];
+  for (const inc of aiIncidents) {
+    const showAll = inc.showAll || !inc.ranked || !inc.ranked.length;
+    const list = showAll ? inc.all.map(rec => ({ rec })) : inc.ranked;
+    parts.push('<div class="day-div">' + esc(exactStamp(inc.ms)) +
+      (inc.label ? " · " + esc(inc.label) : "") +
+      " · " + inc.all.length + " transmission" + (inc.all.length === 1 ? "" : "s") + " in window</div>");
+    if (!inc.all.length) {
+      parts.push('<div class="empty" style="padding:16px">Nothing transcribed in this window yet.</div>');
+      continue;
+    }
+    if (!showAll) parts.push('<div class="empty" style="padding:8px 14px;text-align:left;font-size:12.5px">' +
+      "Best matches for " + esc(inc.label) + ". <b>" + inc.all.length + "</b> transmissions in this window &mdash; " +
+      '<button class="mini" data-all="' + inc.ms + '" style="display:inline">show all in order</button></div>');
+    for (const h of list) { parts.push(aiHitHtml(h, aiHits.length)); aiHits.push(h); }
+  }
+  box.innerHTML = parts.join("");
+}
+
 /* ---------- events ---------- */
 $("aiToggle").addEventListener("click", () => aiOpen());
 $("aiSearch").addEventListener("click", aiDoSearch);
@@ -2031,6 +2297,12 @@ $("aiSettings").addEventListener("click", () => {
 });
 
 $("aiResults").addEventListener("click", e => {
+  const all = e.target.closest("[data-all]");
+  if (all) {
+    const inc = aiIncidents && aiIncidents.find(i => String(i.ms) === all.dataset.all);
+    if (inc) { inc.showAll = true; aiRenderIncidents(); }
+    return;
+  }
   const el = e.target.closest(".hit"); if (!el) return;
   const h = aiHits[Number(el.dataset.hit)]; if (!h) return;
   const r = h.rec;
@@ -2046,6 +2318,21 @@ $("aiResults").addEventListener("keydown", e => {
 });
 
 $("aiIndex").addEventListener("click", () => aiIndexRange(Number($("aiRange").value) || 6));
+
+function aiShowTab(which){
+  const win = which === "windows";
+  $("aiWindowsBox").hidden = !win;
+  $("aiRangeBox").hidden = win;
+  $("aiTabWindows").setAttribute("aria-pressed", String(win));
+  $("aiTabRange").setAttribute("aria-pressed", String(!win));
+  if (win) { aiRenderWindowPreview(); $("aiTimes").focus(); }
+}
+$("aiTabRange").addEventListener("click", () => aiShowTab("range"));
+$("aiTabWindows").addEventListener("click", () => aiShowTab("windows"));
+$("aiTimes").addEventListener("input", aiRenderWindowPreview);
+$("aiTimesDate").addEventListener("change", aiRenderWindowPreview);
+$("aiPad").addEventListener("change", aiRenderWindowPreview);
+$("aiWinGo").addEventListener("click", aiIndexWindows);
 $("aiRange").addEventListener("change", () => {
   if (aiJob.running) return;
   const h = Number($("aiRange").value) || 6;
@@ -2134,6 +2421,10 @@ document.addEventListener("keydown", e => {
 $("aiProxy").value = aiCfg.proxy;
 $("aiModel").value = aiCfg.model;
 $("aiMinLen").value = String(aiCfg.minLen);
+(() => {   // the date box defaults to today, in local time
+  const d = new Date();
+  $("aiTimesDate").value = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+})();
 $("aiLive").checked = aiCfg.live;
 $("aiShowRows").checked = aiCfg.showRows;
 $("aiEngine").textContent = navigator.gpu ? "WebGPU available." : "No WebGPU here — transcription will use WASM and be slower.";

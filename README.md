@@ -65,6 +65,31 @@ re-serves it with that one header. It stores nothing and only talks to openmhz.c
 (`cd proxy && npx wrangler deploy`), paste the URL into **Settings**, press **Test**. Full
 instructions in [proxy/README.md](proxy/README.md).
 
+### Finding a call you already know something about
+
+**Around known times** takes a list of calls you already have — off a dispatch app, a run sheet,
+a report — and transcribes only the traffic around each one:
+
+```
+14:32  1708 Jackson Ave  chest pain
+2:47 PM - 210 Molly Barr Rd - fall victim
+0918  1201 Office Park Dr  difficulty breathing
+09/21 23:05  Highway 7 N  MVA with injuries
+```
+
+Each line does two jobs. The **time** decides what to fetch — ±10 minutes by default, overlapping
+windows merged so nothing is fetched twice. Everything else on the line — **address, complaint,
+unit** — becomes the query for that window, and the transmissions that mention it are pulled to
+the top of the traffic in that window.
+
+That turns "search a month of radio" into "transcribe twenty minutes per incident". Twenty
+incidents is roughly 600 calls, a few minutes, instead of tens of thousands.
+
+Times are read as `14:32`, `2:47 PM`, `0918`, `09/21 23:05` or full ISO. A bare four-digit number
+is only treated as a time at the **start** of a line, because `1708 Jackson Ave` is otherwise
+indistinguishable from 17:08 — and the preview lists what every line was understood to mean
+before anything is fetched, so a wrong guess is visible rather than silent.
+
 ### Why it skips the shortest calls
 
 Sampling calls by length and transcribing them shows where real speech starts:
