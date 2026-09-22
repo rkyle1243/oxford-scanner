@@ -14,8 +14,10 @@ Live page: _(enable GitHub Pages to populate)_
 - **Talkgroup filter** across all 35 groups, grouped by agency. Selections, alerts, and volume persist
   in `localStorage`.
 - **Activity strip** — calls per minute over the last 30 minutes.
-- **Archive** — jump to any date and time within the retention window, or page backwards through
-  earlier traffic 50 calls at a time. Historical calls never fire alerts or enter the scan queue.
+- **Archive** — jump to any date and time within the retention window and see a window of traffic
+  around that moment (50 calls before it, 50 after), then page further in either direction with
+  Load earlier traffic / Load later traffic. Historical calls never fire alerts or enter the scan
+  queue.
 
 No build step, no dependencies, no backend. Open `index.html` directly or serve it anywhere static.
 
